@@ -16,6 +16,7 @@ venv/
 .venv/
 .playwright-mcp
 coturn/
+certs/
 *.wav
 dograh_pcm_cache/
 node_modules/

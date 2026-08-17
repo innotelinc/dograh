@@ -1,0 +1,65 @@
+# Auto-generated for the innotelinc/dograh deployment (vai.innotel.us).
+#
+# This deployment is fronted by Nginx Proxy Manager (NPM) running on a
+# separate machine. NPM terminates TLS for vai.innotel.us and forwards plain
+# HTTP to this server's internal nginx on port 8080, so:
+#   - the internal nginx container only needs to listen on port 80 (HTTP);
+#   - we do NOT bind 80/443 on this host (NPM owns those on its own box).
+#
+# It also:
+#   - builds the api and ui images from this repo's source (fork mode);
+#   - wires MinIO and Redis credentials from .env instead of the defaults;
+#   - disables the cloudflared quick-tunnel (not needed behind NPM).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: dograh-local/dograh-api:local
+    pull_policy: never
+    environment:
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-redissecret}@redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    image: dograh-local/dograh-ui:local
+    pull_policy: never
+
+  redis:
+    command: >
+      --requirepass ${REDIS_PASSWORD:-redissecret}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redissecret}", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
+
+  nginx:
+    # NPM forwards http://73.68.203.71:8080 -> this container's port 80.
+    ports:
+      - "8080:80"
+
+  cloudflared:
+    # Not needed behind NPM. The api service still declares a dependency on
+    # it, so replace the quick-tunnel with a harmless sleep container that
+    # satisfies the dependency without exposing a public tunnel URL.
+    image: alpine:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    ports: []

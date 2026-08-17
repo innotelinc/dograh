@@ -73,14 +73,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          amd64) \
            primary_url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" ; \
            primary_sha256="abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67" ; \
-           fallback_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-30-13-19/ffmpeg-N-124681-gb8c5376eb4-linux64-gpl.tar.xz" ; \
-           fallback_sha256="6cfd689ee95ff128e89080af10c93f16e48760eb2acc124c5c8258dc922cc13b" ; \
+           fallback_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-N-126175-g0056dd32fd-linux64-gpl.tar.xz" ; \
+           fallback_sha256="d6c3aeff33a323659ddc8c185fb8c5fc2f7fe7386053a40af5e326cae95cd0d4" ; \
            ;; \
          arm64) \
            primary_url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz" ; \
            primary_sha256="f4149bb2b0784e30e99bdda85471c9b5930d3402014e934a5098b41d0f7201b1" ; \
-           fallback_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-30-13-19/ffmpeg-N-124681-gb8c5376eb4-linuxarm64-gpl.tar.xz" ; \
-           fallback_sha256="b90a31f1d0b030f5d8a3d11cfec736e369bd5a1371b19bf65421a07f72b1d547" ; \
+           fallback_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-N-126175-g0056dd32fd-linuxarm64-gpl.tar.xz" ; \
+           fallback_sha256="f275964503c6ca5672d66879e4b8ddee74a182d77ad51106931206dfea796b7b" ; \
            ;; \
          *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
        esac \
