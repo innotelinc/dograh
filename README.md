@@ -21,9 +21,9 @@ existing PBX extensions can be answered by AI voice agents.
            ▼
 ┌─────────────────────────────┐
 │  Nginx Proxy Manager (NPM)  │   terminates TLS, forwards plain HTTP
-│  (separate machine)         │
+│  (proxy.innotel.us)         │
 └─────────────┬───────────────┘
-              │ http://73.68.203.71:80
+              │ http://proxy.innotel.us:80
               ▼
 ┌─────────────────────────────┐
 │  internal nginx (Docker)    │   routes /api/v1 → api, / → ui, /voice-audio → minio
@@ -88,7 +88,7 @@ Create a **Proxy Host** on your NPM machine:
 |---------|-------|
 | Domain Names | `vai.innotel.us` |
 | Scheme | `http` |
-| Forward Hostname / IP | `73.68.203.71` |
+| Forward Hostname / IP | `proxy.innotel.us` |
 | Forward Port | `80` |
 | WebSockets Support | **On** |
 | Block Common Exploits | On |
@@ -106,7 +106,7 @@ Open on this server:
 
 On the Asterisk box (`voice.innotel.us`):
 
-- **TCP 8088** — to this server (`73.68.203.71`) only, for ARI.
+- **TCP 8088** — to this server (`proxy.innotel.us`) only, for ARI.
 
 ---
 
@@ -117,7 +117,7 @@ All secrets live in `.env` (gitignored — never commit it). Required keys:
 | Key | Purpose |
 |-----|---------|
 | `ENVIRONMENT` | `production` |
-| `SERVER_IP` | Public IP of this server (`73.68.203.71`) |
+| `SERVER_IP` | Public IPv4 of the Docker host — set in the gitignored `.env` only (real IP never committed) |
 | `PUBLIC_HOST` | `vai.innotel.us` |
 | `PUBLIC_BASE_URL` | `https://vai.innotel.us` |
 | `BACKEND_API_ENDPOINT` | `https://vai.innotel.us` |

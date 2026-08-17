@@ -18,9 +18,9 @@ Dograh talks to Asterisk over two channels:
   `asterisk -rx "module show like chan_websocket"` and
   `asterisk -rx "module show like res_websocket_client"`).
 - Outbound HTTPS (port 443) from the Asterisk box to `vai.innotel.us`.
-- Port **8088** reachable from the Dograh server (`73.68.203.71`) so Dograh can
+- Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
   reach `http://voice.innotel.us:8088`. Open it in the FreePBX firewall for
-  `73.68.203.71` only.
+  `proxy.innotel.us` only.
 
 ## Files
 

@@ -62,7 +62,7 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
 
   nginx:
-    # NPM forwards http://73.68.203.71 -> this container's port 80.
+    # NPM (proxy.innotel.us) forwards plain HTTP to this container's port 80.
     # (Host port 80 binding comes from the base docker-compose.yaml; the
     # override adds nothing here.)
 
