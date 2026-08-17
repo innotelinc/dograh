@@ -23,7 +23,7 @@ existing PBX extensions can be answered by AI voice agents.
 │  Nginx Proxy Manager (NPM)  │   terminates TLS, forwards plain HTTP
 │  (separate machine)         │
 └─────────────┬───────────────┘
-              │ http://73.68.203.71:8080
+              │ http://73.68.203.71:80
               ▼
 ┌─────────────────────────────┐
 │  internal nginx (Docker)    │   routes /api/v1 → api, / → ui, /voice-audio → minio
@@ -39,7 +39,7 @@ existing PBX extensions can be answered by AI voice agents.
 ```
 
 Key differences from the upstream remote deployment:  - **TLS is terminated by NPM**, not by the bundled nginx container. The internal
-  nginx listens on plain HTTP and is published on host port **8080** only.
+  nginx listens on plain HTTP and is published on host port **80** only.
 - The **cloudflared** quick-tunnel is disabled (not needed behind NPM).
 - Images are **built from this fork's source** rather than pulled from a
   registry.
@@ -89,7 +89,7 @@ Create a **Proxy Host** on your NPM machine:
 | Domain Names | `vai.innotel.us` |
 | Scheme | `http` |
 | Forward Hostname / IP | `73.68.203.71` |
-| Forward Port | `8080` |
+| Forward Port | `80` |
 | WebSockets Support | **On** |
 | Block Common Exploits | On |
 | SSL | Let's Encrypt for `vai.innotel.us` |
@@ -100,7 +100,7 @@ No custom locations are needed — the internal nginx does all the routing.
 
 Open on this server:
 
-- **TCP 8080** — to the NPM machine only (internal nginx).
+- **TCP 80** — to the NPM machine only (internal nginx).
 - **UDP/TCP 3478, 5349** and **UDP 49152–49200** — coturn (WebRTC browser
   calls / dashboard "Web Call" testing).
 

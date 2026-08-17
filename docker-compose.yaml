@@ -96,8 +96,9 @@ services:
       ui:
         condition: service_started
     ports:
+      # NPM terminates TLS on vai.innotel.us; the internal nginx only
+      # serves plain HTTP on port 80.
       - "80:80"
-      - "443:443"
     volumes:
       - nginx-generated:/etc/nginx/conf.d:ro
       - ./certs:/etc/nginx/certs:ro
@@ -242,8 +243,6 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared-tunnel
     command: tunnel --no-autoupdate --url http://api:8000 --metrics 0.0.0.0:2000
-    ports:
-      - "2000:2000" # Expose metrics endpoint
     networks:
       - app-network
 

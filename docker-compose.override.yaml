@@ -2,9 +2,9 @@
 #
 # This deployment is fronted by Nginx Proxy Manager (NPM) running on a
 # separate machine. NPM terminates TLS for vai.innotel.us and forwards plain
-# HTTP to this server's internal nginx on port 8080, so:
-#   - the internal nginx container only needs to listen on port 80 (HTTP);
-#   - we do NOT bind 80/443 on this host (NPM owns those on its own box).
+# HTTP to this server's internal nginx on port 80, so:
+#   - the internal nginx container only listens on port 80 (HTTP);
+#   - the https/443 binding is removed from the base compose (NPM owns TLS).
 #
 # It also:
 #   - builds the api and ui images from this repo's source (fork mode);
@@ -35,6 +35,17 @@ services:
       dockerfile: ui/Dockerfile
     image: dograh-local/dograh-ui:local
     pull_policy: never
+    environment:
+      # Docker sets HOSTNAME to the container ID, which makes Next.js' standalone
+      # server bind to the container IP instead of all interfaces. Pin it to
+      # 0.0.0.0 so the server listens on all interfaces.
+      HOSTNAME: "0.0.0.0"
+    healthcheck:
+      # `localhost` resolves to ::1 (IPv6) inside this container while the
+      # server binds IPv4-only, so the upstream wget localhost:3010 check always
+      # fails. Check 127.0.0.1 instead.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3010 || exit 1"]
+
 
   redis:
     command: >
@@ -51,9 +62,9 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
 
   nginx:
-    # NPM forwards http://73.68.203.71:8080 -> this container's port 80.
-    ports:
-      - "8080:80"
+    # NPM forwards http://73.68.203.71 -> this container's port 80.
+    # (Host port 80 binding comes from the base docker-compose.yaml; the
+    # override adds nothing here.)
 
   cloudflared:
     # Not needed behind NPM. The api service still declares a dependency on
