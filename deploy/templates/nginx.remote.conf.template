@@ -4,9 +4,10 @@ server {
     listen 80;
     server_name __DOGRAH_PUBLIC_HOST__;
 
-    # NPM (Nginx Proxy Manager) terminates TLS on the public side and forwards
-    # plain HTTP to this server on port 8080. No TLS redirect or 443 block is
-    # needed here — the app always sees X-Forwarded-Proto https below.
+    # NPM (Nginx Proxy Manager, proxy.innotel.us) terminates TLS on the public
+    # side and forwards plain HTTP here on port 80. No ACME webroot, TLS
+    # redirect, or 443 block is needed — the app always sees
+    # X-Forwarded-Proto https below.
 
     # Backend API and WebSockets - bypass the UI, go straight to the
     # api workers via the least_conn upstream defined above.

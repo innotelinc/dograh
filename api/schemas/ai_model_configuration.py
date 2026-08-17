@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from api.schemas.user_configuration import EffectiveAIModelConfiguration
 from api.services.configuration.registry import (
     DograhEmbeddingsConfiguration,
     DograhLLMService,
@@ -18,23 +18,42 @@ from api.services.configuration.registry import (
     TTSConfig,
 )
 
+DOGRAH_SPEED_MIN = 0.5
+DOGRAH_SPEED_MAX = 2.0
+DOGRAH_SPEED_STEP = 0.1
 DOGRAH_SPEED_OPTIONS: tuple[float, ...] = (0.8, 1.0, 1.2)
 DOGRAH_DEFAULT_VOICE = "default"
 DOGRAH_DEFAULT_LANGUAGE = "multi"
 
 
+class EffectiveAIModelConfiguration(BaseModel):
+    llm: LLMConfig | None = None
+    stt: STTConfig | None = None
+    tts: TTSConfig | None = None
+    embeddings: EmbeddingsConfig | None = None
+    realtime: RealtimeConfig | None = None
+    is_realtime: bool = False
+    managed_service_version: int | None = None
+    test_phone_number: str | None = None
+    timezone: str | None = None
+    last_validated_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_incomplete_realtime_when_disabled(cls, data):
+        """Skip realtime validation when is_realtime is False and api_key is missing."""
+        if isinstance(data, dict) and not data.get("is_realtime", False):
+            realtime = data.get("realtime")
+            if isinstance(realtime, dict) and not realtime.get("api_key"):
+                data.pop("realtime", None)
+        return data
+
+
 class DograhManagedAIModelConfiguration(BaseModel):
     api_key: str
     voice: str = DOGRAH_DEFAULT_VOICE
-    speed: float = Field(default=1.0)
+    speed: float = Field(default=1.0, ge=DOGRAH_SPEED_MIN, le=DOGRAH_SPEED_MAX)
     language: str = DOGRAH_DEFAULT_LANGUAGE
-
-    @model_validator(mode="after")
-    def validate_speed(self):
-        if self.speed not in DOGRAH_SPEED_OPTIONS:
-            allowed = ", ".join(str(speed) for speed in DOGRAH_SPEED_OPTIONS)
-            raise ValueError(f"Dograh speed must be one of: {allowed}")
-        return self
 
 
 class BYOKPipelineAIModelConfiguration(BaseModel):
@@ -157,9 +176,10 @@ def _compile_dograh_configuration(
         embeddings=DograhEmbeddingsConfiguration(
             provider=ServiceProviders.DOGRAH,
             api_key=configuration.api_key,
-            model="default",
+            model="dograh_embedding_v1",
         ),
         is_realtime=False,
+        managed_service_version=2,
     )
 
 

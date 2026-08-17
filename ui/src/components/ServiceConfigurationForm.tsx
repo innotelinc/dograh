@@ -24,6 +24,9 @@ export type ServiceSegment = "llm" | "tts" | "stt" | "embeddings" | "realtime";
 interface SchemaProperty {
     type?: string;
     default?: string | number | boolean;
+    anyOf?: SchemaProperty[];
+    minimum?: number;
+    maximum?: number;
     enum?: string[];
     examples?: string[];
     model_options?: Record<string, string[]>;
@@ -101,6 +104,13 @@ export interface ServiceConfigurationFormProps {
     submitLabel?: string;
     configurationDefaults?: ServiceConfigurationDefaults | null;
     initialConfig?: Record<string, unknown> | null;
+    /**
+     * When set, locks the realtime/pipeline mode to this value and hides the
+     * in-form toggle. The v2 editor uses this to surface realtime
+     * ("Speech to Speech") and pipeline (BYOK) as separate top-level tabs.
+     * Leave undefined to keep the user-controllable toggle (legacy + overrides).
+     */
+    forceRealtime?: boolean;
 }
 
 function getProviderDisplayName(
@@ -123,6 +133,24 @@ function getGlobalSummary(
     return model ? `${providerLabel} / ${model}` : providerLabel || provider;
 }
 
+function getSchemaDropdownOptions(
+    schema: SchemaProperty | undefined,
+    modelValue?: string,
+): string[] | undefined {
+    let dropdownOptions = schema?.enum || schema?.examples;
+
+    if (schema?.model_options && modelValue && schema.model_options[modelValue]) {
+        dropdownOptions = schema.model_options[modelValue];
+    }
+
+    return dropdownOptions;
+}
+
+function getNumberSchema(schema: SchemaProperty | undefined): SchemaProperty | undefined {
+    if (schema?.type === "number") return schema;
+    return schema?.anyOf?.find(option => option.type === "number");
+}
+
 export function ServiceConfigurationForm({
     mode,
     currentOverrides,
@@ -130,10 +158,11 @@ export function ServiceConfigurationForm({
     submitLabel,
     configurationDefaults,
     initialConfig,
+    forceRealtime,
 }: ServiceConfigurationFormProps) {
     const [apiError, setApiError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isRealtime, setIsRealtime] = useState(false);
+    const [isRealtime, setIsRealtime] = useState(forceRealtime ?? false);
     const { userConfig } = useUserConfig();
     const [schemas, setSchemas] = useState<Record<ServiceSegment, Record<string, ProviderSchema>>>({
         llm: {},
@@ -206,7 +235,7 @@ export function ServiceConfigurationForm({
                     console.error("Failed to fetch configurations");
                     return;
                 }
-                defaultsData = response.data as ServiceConfigurationDefaults;
+                defaultsData = response.data as unknown as ServiceConfigurationDefaults;
             }
 
             const realtimeSchemas = (defaultsData.realtime || {}) as Record<string, ProviderSchema>;
@@ -227,9 +256,9 @@ export function ServiceConfigurationForm({
                 realtime: realtimeSchemas,
             });
 
-            // Restore realtime toggle
+            // Restore realtime toggle (skip when the parent locks the mode)
             const configData = configSource as Record<string, unknown> | null;
-            if (configData?.is_realtime) {
+            if (forceRealtime === undefined && configData?.is_realtime) {
                 setIsRealtime(true);
             }
 
@@ -336,10 +365,12 @@ export function ServiceConfigurationForm({
                         ? providerSchema.$defs[(schema as SchemaProperty).$ref!.split('/').pop() || '']
                         : schema as SchemaProperty;
 
-                    if (!actualSchema?.allow_custom_input || !actualSchema?.examples) return;
+                    if (!actualSchema?.allow_custom_input) return;
 
                     const savedValue = src?.[field] as string | undefined;
-                    if (savedValue && !actualSchema.examples.includes(savedValue)) {
+                    const modelValue = src?.model as string | undefined;
+                    const dropdownOptions = getSchemaDropdownOptions(actualSchema, modelValue);
+                    if (savedValue && dropdownOptions && !dropdownOptions.includes(savedValue)) {
                         detectedCustomInput[`${service}_${field}`] = true;
                     }
                 });
@@ -373,10 +404,11 @@ export function ServiceConfigurationForm({
 
         const validVoices = modelOptions[ttsModel as string];
         const currentVoice = getValues("tts_voice") as string;
-        if (validVoices && currentVoice && !validVoices.includes(currentVoice)) {
+        const isCustomVoice = !!isCustomInput.tts_voice;
+        if (validVoices && currentVoice && !validVoices.includes(currentVoice) && !isCustomVoice) {
             setValue("tts_voice", validVoices[0], { shouldDirty: true });
         }
-    }, [ttsModel, serviceProviders.tts, setValue, getValues, schemas]);
+    }, [ttsModel, serviceProviders.tts, setValue, getValues, schemas, isCustomInput.tts_voice]);
 
     // Reset language when STT model changes if the provider has model-dependent language options
     const sttModel = watch("stt_model");
@@ -668,10 +700,14 @@ export function ServiceConfigurationForm({
         const actualSchema = schema.$ref && providerSchema.$defs
             ? providerSchema.$defs[schema.$ref.split('/').pop() || '']
             : schema;
+        const dropdownOptions = getSchemaDropdownOptions(
+            actualSchema,
+            watch(`${service}_model`) as string | undefined,
+        );
+        const numberSchema = getNumberSchema(actualSchema);
 
         if (service === "tts" && field === "voice" && !actualSchema?.allow_custom_input) {
-            const hasVoiceOptions = actualSchema?.enum || actualSchema?.examples;
-            if (!hasVoiceOptions) {
+            if (!dropdownOptions) {
                 return (
                     <VoiceSelector
                         provider={serviceProviders.tts}
@@ -685,10 +721,10 @@ export function ServiceConfigurationForm({
             }
         }
 
-        if (actualSchema?.allow_custom_input && actualSchema?.examples) {
+        if (actualSchema?.allow_custom_input && dropdownOptions && dropdownOptions.length > 0) {
             const fieldKey = `${service}_${field}`;
             const currentValue = watch(fieldKey) as string || "";
-            const options = actualSchema.examples;
+            const options = dropdownOptions;
 
             if (isCustomInput[fieldKey]) {
                 return (
@@ -756,15 +792,6 @@ export function ServiceConfigurationForm({
             );
         }
 
-        let dropdownOptions = actualSchema?.enum || actualSchema?.examples;
-
-        if (actualSchema?.model_options) {
-            const modelValue = watch(`${service}_model`) as string;
-            if (modelValue && actualSchema.model_options[modelValue]) {
-                dropdownOptions = actualSchema.model_options[modelValue];
-            }
-        }
-
         if (dropdownOptions && dropdownOptions.length > 0) {
             const getDisplayName = (value: string) => {
                 if (field === "language") {
@@ -813,12 +840,18 @@ export function ServiceConfigurationForm({
 
         return (
             <Input
-                type={actualSchema?.type === "number" ? "number" : "text"}
-                {...(actualSchema?.type === "number" && { step: "any" })}
+                type={numberSchema ? "number" : "text"}
+                {...(numberSchema && {
+                    step: "any",
+                    min: numberSchema.minimum,
+                    max: numberSchema.maximum,
+                })}
                 placeholder={`Enter ${field}`}
                 {...register(`${service}_${field}`, {
                     required: service !== "embeddings" && providerSchema.required?.includes(field),
-                    valueAsNumber: actualSchema?.type === "number"
+                    ...(numberSchema && {
+                        setValueAs: (value: string) => value === "" ? undefined : Number(value),
+                    }),
                 })}
             />
         );
@@ -867,22 +900,24 @@ export function ServiceConfigurationForm({
 
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
-            {/* Realtime toggle */}
-            <div className="flex items-center justify-between mb-4 p-4 border rounded-lg">
-                <div>
-                    <Label htmlFor="realtime-toggle" className="text-sm font-medium">
-                        Realtime Mode
-                    </Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                        Uses a single speech-to-speech model (no separate STT/TTS). An LLM is still required for variable extraction and QA.
-                    </p>
+            {/* Realtime toggle — hidden when the parent locks the mode (v2 tabs) */}
+            {forceRealtime === undefined && (
+                <div className="flex items-center justify-between mb-4 p-4 border rounded-lg">
+                    <div>
+                        <Label htmlFor="realtime-toggle" className="text-sm font-medium">
+                            Realtime Mode
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Uses a single speech-to-speech model (no separate STT/TTS). An LLM is still required for variable extraction and QA.
+                        </p>
+                    </div>
+                    <Switch
+                        id="realtime-toggle"
+                        checked={isRealtime}
+                        onCheckedChange={setIsRealtime}
+                    />
                 </div>
-                <Switch
-                    id="realtime-toggle"
-                    checked={isRealtime}
-                    onCheckedChange={setIsRealtime}
-                />
-            </div>
+            )}
 
             <Card>
                 <CardContent className="pt-6">

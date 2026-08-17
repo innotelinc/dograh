@@ -1,15 +1,18 @@
 # Auto-generated for the innotelinc/dograh deployment (vai.innotel.us).
 #
-# This deployment is fronted by Nginx Proxy Manager (NPM) running on a
-# separate machine. NPM terminates TLS for vai.innotel.us and forwards plain
-# HTTP to this server's internal nginx on port 80, so:
-#   - the internal nginx container only listens on port 80 (HTTP);
-#   - the https/443 binding is removed from the base compose (NPM owns TLS).
+# This deployment is fronted by Nginx Proxy Manager (NPM) at proxy.innotel.us.
+# NPM terminates TLS for vai.innotel.us and forwards plain HTTP to this
+# server's internal nginx on port 80, so:
+#   - the internal nginx only listens on port 80 (HTTP); the https/443
+#     binding is removed from the base compose (NPM owns TLS);
+#   - cloudflared is gated behind upstream's own `tunnel` profile, which this
+#     deployment never enables.
 #
 # It also:
 #   - builds the api and ui images from this repo's source (fork mode);
-#   - wires MinIO and Redis credentials from .env instead of the defaults;
-#   - disables the cloudflared quick-tunnel (not needed behind NPM).
+#   - maps this deployment's MinIO credential names (.env: MINIO_ACCESS_KEY /
+#     MINIO_SECRET_KEY) onto upstream's expected MINIO_ROOT_USER /
+#     MINIO_ROOT_PASSWORD variables.
 services:
   api:
     build:
@@ -18,16 +21,11 @@ services:
     image: dograh-local/dograh-api:local
     pull_policy: never
     environment:
+      # Upstream reads these from .env's MINIO_ROOT_USER / MINIO_ROOT_PASSWORD;
+      # this deployment keeps the older MINIO_ACCESS_KEY / MINIO_SECRET_KEY
+      # names, so map them explicitly.
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-redissecret}@redis:6379"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
 
   ui:
     build:
@@ -35,26 +33,6 @@ services:
       dockerfile: ui/Dockerfile
     image: dograh-local/dograh-ui:local
     pull_policy: never
-    environment:
-      # Docker sets HOSTNAME to the container ID, which makes Next.js' standalone
-      # server bind to the container IP instead of all interfaces. Pin it to
-      # 0.0.0.0 so the server listens on all interfaces.
-      HOSTNAME: "0.0.0.0"
-    healthcheck:
-      # `localhost` resolves to ::1 (IPv6) inside this container while the
-      # server binds IPv4-only, so the upstream wget localhost:3010 check always
-      # fails. Check 127.0.0.1 instead.
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3010 || exit 1"]
-
-
-  redis:
-    command: >
-      --requirepass ${REDIS_PASSWORD:-redissecret}
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redissecret}", "ping"]
-      interval: 3s
-      timeout: 10s
-      retries: 10
 
   minio:
     environment:
@@ -62,15 +40,5 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
 
   nginx:
-    # NPM (proxy.innotel.us) forwards plain HTTP to this container's port 80.
-    # (Host port 80 binding comes from the base docker-compose.yaml; the
-    # override adds nothing here.)
-
-  cloudflared:
-    # Not needed behind NPM. The api service still declares a dependency on
-    # it, so replace the quick-tunnel with a harmless sleep container that
-    # satisfies the dependency without exposing a public tunnel URL.
-    image: alpine:latest
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["sleep infinity"]
-    ports: []
+    # Host port 80 comes from the base docker-compose.yaml (443 removed);
+    # NPM at proxy.innotel.us forwards plain HTTP here.
