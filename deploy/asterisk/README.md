@@ -19,7 +19,7 @@ Dograh talks to Asterisk over two channels:
   `asterisk -rx "module show like res_websocket_client"`).
 - Outbound HTTPS (port 443) from the Asterisk box to `vai.innotel.us`.
 - Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
-  reach `http://voice.innotel.us:8088`. Open it in the FreePBX firewall for
+  reach `http://ws.innotel.us:8088`. Open it in the FreePBX firewall for
   `proxy.innotel.us` only.
 
 ## Files
@@ -58,7 +58,7 @@ Dograh talks to Asterisk over two channels:
 1. Log in to Dograh at `https://vai.innotel.us`.
 2. Go to **Telephony Configurations** → **Add configuration** → **Asterisk ARI**.
 3. Fill in:
-   - **ARI Endpoint URL**: `http://voice.innotel.us:8088`
+   - **ARI Endpoint URL**: `http://ws.innotel.us:8088`
    - **Stasis App Name**: `dograh` (the section name in `ari.conf`)
    - **App Password**: the password you set in `ari.conf`
    - **WebSocket Client Name**: `dograh` (the section name in `websocket_client.conf`)
