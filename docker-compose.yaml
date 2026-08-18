@@ -242,6 +242,11 @@ services:
       TURN_HOST: "${TURN_HOST:-}"
       TURN_SECRET: "${TURN_SECRET:-}"
       FORCE_TURN_RELAY: "${FORCE_TURN_RELAY:-false}"
+      # ICE candidate filtering for WebRTC signaling (values: none, private,
+      # public, all). Defaults are auto-derived from ENVIRONMENT/SERVER_IP;
+      # ICE_INBOUND_POLICY=none lets same-LAN clients use private candidates.
+      ICE_OUTBOUND_POLICY: "${ICE_OUTBOUND_POLICY:-}"
+      ICE_INBOUND_POLICY: "${ICE_INBOUND_POLICY:-}"
       SERVER_IP: "${SERVER_IP:-}"
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"

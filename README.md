@@ -155,6 +155,7 @@ All secrets live in `.env` (gitignored — never commit it). Required keys:
 | `REDIS_PASSWORD` | Redis password |
 | `FASTAPI_WORKERS` | uvicorn worker count (4 on this server) |
 | `ENABLE_TELEMETRY` | `false` for this deployment |
+| `ICE_INBOUND_POLICY` | `none` here — accepts private-IP ICE candidates so dashboard "Web Call" works from browsers on the same LAN/NAT as the server (hairpin NAT is unreliable on this router). Omit for pure public-internet clients. |
 
 Generate new secrets with:
 
