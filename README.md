@@ -31,7 +31,7 @@ existing PBX extensions can be answered by AI voice agents.
        ▼          ▼
    api:8000    ui:3010        minio:9000 (private), postgres, redis, coturn
        │
-       │ ARI REST (http://ws.innotel.us:8088) + external media WebSocket
+       │ ARI REST (http://192.168.1.9:8088, internal LAN) + external media WebSocket
        ▼
 ┌─────────────────────────────┐
 │  FreePBX / Asterisk         │   voice.innotel.us
@@ -153,7 +153,7 @@ in [`deploy/asterisk/README.md`](deploy/asterisk/README.md). In short:
 3. Reload Asterisk modules.
 4. In Dograh (`https://vai.innotel.us/telephony-configurations`), add an
    **Asterisk ARI** configuration pointing at
-   `http://ws.innotel.us:8088`, then register each extension as a phone
+   `http://192.168.1.9:8088` (the PBX's internal LAN address), then register each extension as a phone
    number with an inbound workflow.
 
 ---
