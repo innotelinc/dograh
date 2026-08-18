@@ -28,13 +28,15 @@ Dograh talks to Asterisk over two channels:
 |------|---------|-------------|
 | `ari.conf` | ARI user `dograh` (Stasis app name + password) | `/etc/asterisk/ari.conf` |
 | `http.conf` | Enable the Asterisk HTTP server on port 8088 | `/etc/asterisk/http.conf` |
-| `extensions.conf` | Route inbound calls into `Stasis(dograh)` | merge into `/etc/asterisk/extensions.conf` |
+| `extensions.conf` | Route inbound calls into `Stasis(dograh)` (vanilla Asterisk only) | merge into `/etc/asterisk/extensions.conf` |
 | `websocket_client.conf` | External media stream to `wss://vai.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
 
 ## Steps
 
 1. Copy the files to your Asterisk box (e.g. `/etc/asterisk/`), merging
-   `extensions.conf` into your existing dialplan.
+   `extensions.conf` into your existing dialplan. **On FreePBX, skip
+   `extensions.conf`** — use the GUI recipe below instead (FreePBX regenerates
+   that file on every Apply Config, so manual edits get wiped).
 2. In `ari.conf`, change `CHANGE_ME_ARI_PASSWORD` to a strong password.
    **This exact password is the "App Password" you'll enter in Dograh.**
 3. Reload Asterisk:
@@ -52,6 +54,40 @@ Dograh talks to Asterisk over two channels:
    asterisk -rx "module show like chan_websocket"
    asterisk -rx "module show like res_websocket_client"
    ```
+
+## FreePBX (GUI) setup — use this instead of editing extensions.conf
+
+FreePBX regenerates `/etc/asterisk/extensions.conf` on every Apply Config, so
+manual edits get wiped. Use the native GUI mechanism instead:
+
+1. **Applications → Custom Contexts → Add Custom Context**
+   - Context name: `dograh-inbound`
+   - Content:
+
+     ```
+     exten => 8000,1,NoOp(Dograh voice agent inbound)
+      same => n,Stasis(dograh)
+      same => n,Hangup()
+     ```
+
+   - Add one `exten =>` line per extension registered in Dograh (or use a
+     pattern like `_8XXX`). Submit → **Apply Config**.
+
+2. **Admin → Custom Destinations → Add Destination**
+   - Description: `Dograh Voice Agent`
+   - Destination: `dograh-inbound,8000,1`
+
+   ⚠️ Keep the concrete extension (e.g. `8000`) in the destination — do **not**
+   use `s`. Dograh matches inbound calls by the channel's dialplan exten at
+   `StasisStart`; if the exten is `s` the call is hung up as "no matching phone
+   number". Submit → **Apply Config**.
+
+3. **Route calls into it**
+   - External/DID calls: **Connectivity → Inbound Routes → Add** → DID Number
+     `8000` → Set Destination → *Custom Destinations → Dograh Voice Agent*.
+   - Internal calls (dialing 8000 from a desk phone): **Applications →
+     Extensions → Add Extension → Custom** → Extension `8000` → Destination →
+     the same custom destination.
 
 ## Configure Dograh
 
