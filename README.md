@@ -110,6 +110,31 @@ On the Asterisk box (`voice.innotel.us`):
 
 ---
 
+## In-place setup (existing server)
+
+Already have this repo checked out on a server with Docker installed and `.env`
+configured? `scripts/setup_inplace.sh` brings the stack up in one command — it
+never prompts for IPs/secrets and never overwrites `.env`:
+
+```bash
+./scripts/setup_inplace.sh              # build from source + start (first build 10-20 min)
+./scripts/setup_inplace.sh --no-build   # pull prebuilt images instead
+./scripts/setup_inplace.sh --preflight-only   # validate config only, no changes
+```
+
+What it does:
+
+1. Initializes the `pipecat` submodule (needed to build the api image).
+2. Generates self-signed certs in `certs/` if missing (required by `dograh-init`).
+3. Validates the rendered nginx/coturn config against `.env`.
+4. Syncs the Postgres role password with `.env` (idempotent).
+5. Builds and starts the stack, then waits for the API to come up.
+
+This is the in-place counterpart to `scripts/setup_remote.sh`, which targets
+fresh/remote installs and refuses to run when `.env` already exists.
+
+---
+
 ## Environment (`.env`)
 
 All secrets live in `.env` (gitignored — never commit it). Required keys:
