@@ -88,7 +88,7 @@ Create a **Proxy Host** on your NPM machine:
 |---------|-------|
 | Domain Names | `vai.innotel.us` |
 | Scheme | `http` |
-| Forward Hostname / IP | `proxy.innotel.us` |
+| Forward Hostname / IP | `vai.innotel.us` |
 | Forward Port | `80` |
 | WebSockets Support | **On** |
 | Block Common Exploits | On |
