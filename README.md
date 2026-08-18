@@ -144,6 +144,22 @@ ARI user and Stasis entry. Skip the Asterisk changes with `--skip-asterisk`.
 For an existing Dograh install that just needs rebuilding/restarting, use
 `./remote_up.sh` instead.
 
+## Auto-start on boot (systemd)
+
+`deploy/systemd/dograh-stack.service` starts the stack (with the `remote`
+profile, so nginx + coturn come up too) after a reboot:
+
+```bash
+sudo cp deploy/systemd/dograh-stack.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable dograh-stack.service
+```
+
+The unit waits for the Docker socket, runs `docker compose --profile remote
+up -d`, and retries on failure. Private-IP installs that need the Cloudflare
+tunnel should add `--profile tunnel` to `ExecStart`. To stop the stack:
+`sudo systemctl stop dograh-stack.service` (this also runs on shutdown).
+
 ---
 
 ## Environment (`.env`)
