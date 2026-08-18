@@ -135,6 +135,7 @@ services:
       - "49152-49200:49152-49200/udp"
     volumes:
       - coturn-generated:/etc/coturn:ro
+      - ./certs:/etc/ssl/coturn:ro
     command:
       - -c
       - /etc/coturn/turnserver.conf
