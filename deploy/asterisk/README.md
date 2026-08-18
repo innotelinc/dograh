@@ -22,6 +22,14 @@ Dograh talks to Asterisk over two channels:
   reach `http://192.168.1.9:8088` (the PBX's internal LAN address). Open it in the FreePBX firewall for
   `proxy.innotel.us` only.
 
+> **Same-box install?** If FreePBX/Asterisk and Dograh run on the **same
+> server**, run `sudo ./scripts/setup_inplace.sh` from the Dograh repo instead
+> of doing the steps below by hand — it backs up and wires `ari.conf`,
+> `http.conf`, `websocket_client.conf`, and the `Stasis(dograh)` dialplan
+> entry automatically (FreePBX-safe, uses `extensions_custom.conf`), reloads
+> Asterisk, and prints the dashboard values + the one-time GUI steps for the
+> inbound route.
+
 ## Files
 
 | File | Purpose | Destination |

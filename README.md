@@ -110,28 +110,39 @@ On the Asterisk box (`voice.innotel.us`):
 
 ---
 
-## In-place setup (existing server)
+## In-place setup (on an existing FreePBX/Asterisk server)
 
-Already have this repo checked out on a server with Docker installed and `.env`
-configured? `scripts/setup_inplace.sh` brings the stack up in one command — it
-never prompts for IPs/secrets and never overwrites `.env`:
+Already run FreePBX/Asterisk on a server and want Dograh on the same box?
+`scripts/setup_inplace.sh` installs the Dograh stack **on top of your PBX** — it
+wires the Asterisk side (ARI user, HTTP/ARI server, external-media websocket,
+Stasis dialplan entry) and builds/starts the Docker stack:
 
 ```bash
-./scripts/setup_inplace.sh              # build from source + start (first build 10-20 min)
-./scripts/setup_inplace.sh --no-build   # pull prebuilt images instead
-./scripts/setup_inplace.sh --preflight-only   # validate config only, no changes
+sudo ./scripts/setup_inplace.sh              # build from source + start (first build 10-20 min)
+sudo ./scripts/setup_inplace.sh --no-build   # pull prebuilt images instead
+sudo ./scripts/setup_inplace.sh --preflight-only   # validate only, no changes
 ```
 
 What it does:
 
-1. Initializes the `pipecat` submodule (needed to build the api image).
-2. Generates self-signed certs in `certs/` if missing (required by `dograh-init`).
-3. Validates the rendered nginx/coturn config against `.env`.
-4. Syncs the Postgres role password with `.env` (idempotent).
-5. Builds and starts the stack, then waits for the API to come up.
+1. Detects FreePBX vs. vanilla Asterisk and checks the required modules
+   (`res_ari`, `chan_websocket`, `res_websocket_client`).
+2. Backs up and wires `/etc/asterisk`: adds the `dograh` ARI user to
+   `ari.conf`, enables the HTTP/ARI server on 8088 in `http.conf`, writes
+   `websocket_client.conf` for external media, and adds the `Stasis(dograh)`
+   dialplan entry (`extensions_custom.conf` on FreePBX, `extensions.conf` on
+   vanilla), then reloads Asterisk.
+3. Creates `.env` with fresh secrets (never overwrites an existing `.env`),
+   generates self-signed certs, and (in build mode) a
+   `docker-compose.override.yaml`.
+4. Builds and starts the stack, waits for the API, and prints the telephony
+   values to enter in the dashboard (ARI endpoint, app name, password) plus
+   the one-time FreePBX GUI steps for the inbound route.
 
-This is the in-place counterpart to `scripts/setup_remote.sh`, which targets
-fresh/remote installs and refuses to run when `.env` already exists.
+Your existing PBX extensions and routes are untouched beyond the added dograh
+ARI user and Stasis entry. Skip the Asterisk changes with `--skip-asterisk`.
+For an existing Dograh install that just needs rebuilding/restarting, use
+`./remote_up.sh` instead.
 
 ---
 
