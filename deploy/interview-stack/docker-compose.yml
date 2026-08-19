@@ -20,6 +20,11 @@
 #  8880  kokoro-fastapi (local TTS)      8001  speaches (local Whisper STT)
 #  20128 9Router (OpenAI-compatible LLM)  5678  n8n
 #  8484  Grist
+#
+#  Binding policy: everything except n8n (5678), Grist (8484), 9Router (20128)
+#  and SigNoz UI (3301) binds to 127.0.0.1 — not reachable on the LAN. The four
+#  exceptions must stay on 0.0.0.0 because n8n reaches 8484/20128 via
+#  host.docker.internal (host gateway IP) and 5678/3301 are NPM proxy targets.
 #  3301  SigNoz UI                       3300  SigNoz query-service API
 #  4317/4318  OTel gRPC/HTTP ingest      8888/8889  otel-collector metrics
 #  19000 ClickHouse native (remapped)    8123  ClickHouse HTTP  19189 keeper
@@ -38,7 +43,7 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # loopback only — dograh (host mode) reaches it on 127.0.0.1
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -52,7 +57,7 @@ services:
     image: redis:7
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redissecret}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # loopback only
     volumes:
       - redis_data:/data
     healthcheck:
@@ -71,8 +76,8 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"   # loopback only (matches upstream dograh compose)
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -146,7 +151,7 @@ services:
     #   deploy: { resources: { reservations: { devices: [ { driver: nvidia, count: 1, capabilities: [gpu] } ] } } }
     command: ["--port", "8880", "--model-dir", "/models"]
     ports:
-      - "8880:8880"
+      - "127.0.0.1:8880:8880"   # loopback only — dograh (host mode) → 127.0.0.1:8880
     volumes:
       - kokoro_models:/models   # caches kokoro-v1.0.onnx + voices-v1.0.bin
     healthcheck:
@@ -174,7 +179,7 @@ services:
       SPEACHES_HOST: "0.0.0.0"
       SPEACHES_PORT: "8000"
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"   # loopback only — dograh (host mode) → 127.0.0.1:8001
     volumes:
       - speaches_models:/root/.cache/huggingface   # cached model → offline runtime
     healthcheck:
@@ -195,7 +200,7 @@ services:
     container_name: nine-router
     restart: unless-stopped
     ports:
-      - "20128:20128"
+      - "0.0.0.0:20128:20128"   # 0.0.0.0 — n8n reaches it via host.docker.internal:20128
     networks: [interview-net]
     profiles: ["nine-router"]   # opt-in until the image is confirmed
 
@@ -205,7 +210,7 @@ services:
     container_name: n8n
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      - "0.0.0.0:5678:5678"   # 0.0.0.0 — NPM proxy target + dograh webhook (host mode)
     environment:
       N8N_HOST: "${N8N_HOST:-localhost}"
       N8N_PORT: 5678
@@ -245,7 +250,7 @@ services:
     container_name: grist
     restart: unless-stopped
     ports:
-      - "8484:8484"
+      - "0.0.0.0:8484:8484"   # 0.0.0.0 — n8n reaches it via host.docker.internal:8484
     environment:
       GRIST_DEFAULT_EMAIL: "${GRIST_ADMIN_EMAIL:-admin@localhost}"
       GRIST_DEFAULT_PASSWORD: "${GRIST_ADMIN_PASSWORD:-admin}"
@@ -268,9 +273,9 @@ services:
     container_name: signoz-clickhouse
     restart: unless-stopped
     ports:
-      - "19000:9000"   # native protocol — remapped off 9000 (minio owns it)
-      - "8123:8123"    # HTTP
-      - "19189:9189"   # keeper
+      - "127.0.0.1:19000:9000"   # native protocol — remapped off 9000 (minio owns it); loopback only
+      - "127.0.0.1:8123:8123"    # HTTP — loopback only
+      - "127.0.0.1:19189:9189"   # keeper — loopback only
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse-config.xml:/etc/clickhouse-server/config.xml
@@ -287,10 +292,10 @@ services:
     restart: unless-stopped
     command: ["--config=/etc/otel-collector-config.yaml"]
     ports:
-      - "4317:4317"   # OTLP gRPC  (dograh host mode → 127.0.0.1:4317)
-      - "4318:4318"   # OTLP HTTP  (dograh host mode → 127.0.0.1:4318)
-      - "8888:8888"
-      - "8889:8889"
+      - "127.0.0.1:4317:4317"   # OTLP gRPC — loopback only (dograh host mode → 127.0.0.1:4317)
+      - "127.0.0.1:4318:4318"   # OTLP HTTP — loopback only (dograh host mode → 127.0.0.1:4318)
+      - "127.0.0.1:8888:8888"   # collector metrics — loopback only
+      - "127.0.0.1:8889:8889"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     depends_on:
@@ -303,7 +308,7 @@ services:
     restart: unless-stopped
     command: ["-config=/root/config.yaml"]
     ports:
-      - "3300:3300"   # SigNoz API
+      - "127.0.0.1:3300:3300"   # SigNoz API — loopback only (frontend/collector use service names)
     environment:
       CLICKHOUSE_DB: "signoz_traces"
       CLICKHOUSE_USER: "default"
@@ -332,7 +337,7 @@ services:
     container_name: signoz-frontend
     restart: unless-stopped
     ports:
-      - "3301:3301"   # SigNoz UI → http://localhost:3301
+      - "0.0.0.0:3301:3301"   # SigNoz UI → http://localhost:3301 — 0.0.0.0 (NPM proxy target)
     environment:
       SIGNOZ_FRONTEND_QUERY_SERVICE_ENDPOINT: "http://signoz-query-service:3300"
     depends_on:
@@ -344,7 +349,7 @@ services:
     container_name: signoz-alertmanager
     restart: unless-stopped
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"   # loopback only
     volumes:
       - alertmanager-data:/data
     networks: [interview-net]

@@ -29,19 +29,41 @@ externip). Skip this only if all calls stay on the LAN.
 Forward only 80/443 → NPM (Tier 1), then create proxy hosts in NPM. Each entry
 terminates TLS; NPM reaches the service on the LAN/docker network.
 
-| NPM proxy host  | Target (LAN)            | Notes                                             |
-|-----------------|-------------------------|---------------------------------------------------|
-| dograh UI       | `http://192.168.1.63:3010` | Main dashboard                             |
-| dograh API      | `http://192.168.1.63:8000` | Needed by the UI; keep it LAN-only if possible |
-| n8n             | `http://192.168.1.63:5678` | Workflow editor + webhook receive         |
-| Grist           | `http://192.168.1.63:8484` | Scores/transcripts dashboard              |
-| SigNoz          | `http://192.168.1.63:3301` | Traces + latency dashboards               |
+**Ready-to-import file: `npm-proxy-hosts.json`** (NPM → Admin → Import/Export →
+Import → select the file). It defines six hosts:
+
+| NPM proxy host       | Target (LAN)              | Notes                             |
+|----------------------|---------------------------|-----------------------------------|
+| `vai.innotel.us`     | `http://192.168.1.63:80`  | Web UI (internal nginx → ui:3010) |
+| `api.vai.innotel.us` | `http://192.168.1.63:8000`| API — WebSockets **on**           |
+| `ws.innotel.us`      | `http://192.168.1.63:8000`| ARI media WebSocket — WS **on**   |
+| `n8n.innotel.us`     | `http://192.168.1.63:5678`| Workflow editor + webhook receive |
+| `grist.innotel.us`   | `http://192.168.1.63:8484`| Scores/transcripts dashboard      |
+| `signoz.innotel.us`  | `http://192.168.1.63:3301`| Traces + latency dashboards       |
+
+Import steps:
+1. Point DNS for `api`, `ws`, `n8n`, `grist`, `signoz` subdomains at the NPM
+   box (the `vai.innotel.us` entry already exists — if NPM already has a host
+   for it, delete that object from the file before importing to avoid a
+   duplicate).
+2. NPM → **Admin → Import/Export → Import** → select `npm-proxy-hosts.json`.
+3. After import, open each host in the UI and add a **Let's Encrypt** cert
+   (`SSL` tab → Request a new SSL Certificate). The file imports with
+   `ssl_forced: false` / `certificate_id: 0` so import can't fail on a missing
+   cert.
+4. `forward_host` must be an IP (NPM validates this). If the docker host's LAN
+   IP ever changes, update the forward hosts here (and re-point the DNS A
+   records).
 
 Notes:
 - The dograh webhook URL n8n receives on is `http://<host>:5678/webhook/interview-graded`
-  — the dograh Webhook node calls it over the LAN, not through NPM.
-- If you expose the dograh API through NPM, its ARI media WebSocket
-  (`/api/v1/telephony/ws/ari`) becomes reachable from the internet. It's
+  — the dograh Webhook node calls it over the LAN, not through NPM. If you
+  prefer the public URL, set `N8N_WEBHOOK_URL=https://n8n.innotel.us/` in
+  the compose and point the dograh Webhook node there.
+- `ws.innotel.us` and `api.vai.innotel.us` both forward to dograh's port 8000
+  (the API and its ARI media WebSocket `/api/v1/telephony/ws/ari` share the
+  port). The Asterisk box connects to `wss://ws.innotel.us/api/v1/telephony/ws/ari`
+  (see `deploy/asterisk/websocket_client.conf`). The media WebSocket is
   token-protected only if you set `TELEPHONY_WS_TOKEN_SECRET`+`_ENFORCE` — for a
   capstone, prefer keeping the API LAN-only and using NPM only for UI/n8n/Grist.
 
@@ -65,11 +87,12 @@ are only reachable by dograh (host mode → `127.0.0.1`) or by other containers.
 | 19000, 8123, 19189 | ClickHouse (native/HTTP/keeper) |
 | 9093             | SigNoz alertmanager            |
 
-> Optional hardening: change these compose mappings to `127.0.0.1:<port>:<port>`
-> so they don't answer on the LAN at all. Exceptions that must stay on
-> `0.0.0.0`: **20128** and **8484** (n8n reaches them via `host.docker.internal`
-> = the host gateway IP, not loopback) and anything NPM proxies (3010, 5678,
-> 3301, and 8000 if you proxy the API).
+> **Hardening applied in the compose:** every Tier-3 mapping is bound to
+> `127.0.0.1:<port>:<port>`, so these don't answer on the LAN at all. The only
+> `0.0.0.0` bindings are the exceptions that need it: **20128** and **8484**
+> (n8n reaches them via `host.docker.internal` = the host gateway IP, not
+> loopback) and the NPM proxy targets **5678** (n8n) and **3301** (SigNoz UI).
+> dograh-api is host-mode (port 8000) and is only exposed if you proxy it.
 
 ## The phone path (why nothing else is exposed)
 

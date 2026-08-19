@@ -1,8 +1,9 @@
 # Asterisk / FreePBX ARI wiring (voice.innotel.us)
 
 This directory contains the Asterisk config files that connect your
-FreePBX/Asterisk box at **voice.innotel.us** to Dograh at **api.vai.innotel.us**
-using the **Asterisk ARI** integration.
+FreePBX/Asterisk box at **voice.innotel.us** to Dograh — ARI REST at
+**api.vai.innotel.us**, external media WebSocket at **ws.innotel.us** — using
+the **Asterisk ARI** integration.
 
 Dograh talks to Asterisk over two channels:
 
@@ -17,8 +18,8 @@ Dograh talks to Asterisk over two channels:
   (Asterisk 20 LTS or 22+ known-working; verify with
   `asterisk -rx "module show like chan_websocket"` and
   `asterisk -rx "module show like res_websocket_client"`).
-- Outbound HTTPS (port 443) from the Asterisk box to `api.vai.innotel.us`
-  (the Dograh API endpoint — the external-media WebSocket lives there).
+- Outbound HTTPS (port 443) from the Asterisk box to `ws.innotel.us` (the
+  external-media WebSocket hostname, fronted by NPM).
 - Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
   reach `http://192.168.1.9:8088` (the PBX's internal LAN address). Open it in the FreePBX firewall for
   `proxy.innotel.us` only.
@@ -38,7 +39,7 @@ Dograh talks to Asterisk over two channels:
 | `ari.conf` | ARI user `dograh` (Stasis app name + password) | `/etc/asterisk/ari.conf` |
 | `http.conf` | Enable the Asterisk HTTP server on port 8088 | `/etc/asterisk/http.conf` |
 | `extensions.conf` | Route inbound calls into `Stasis(dograh)` (vanilla Asterisk only) | merge into `/etc/asterisk/extensions.conf` |
-| `websocket_client.conf` | External media stream to `wss://api.vai.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
+| `websocket_client.conf` | External media stream to `wss://ws.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
 
 ## Steps
 
@@ -119,25 +120,32 @@ manual edits get wiped. Use the native GUI mechanism instead:
 
 ## NAT: externip / localnet (one-way audio fix)
 
-**When you need this:** external callers reach the PBX from the internet —
-router forwards **SIP 5060/UDP** (and optionally 5061/TCP for SIP-TLS) plus the
-**RTP range** (default `10000-20000`/UDP, match `rtp.conf`) to the PBX at
-`192.168.1.9`. Without NAT configuration, Asterisk advertises its private IP in
+**This deployment**
+
+| Role | Address |
+|------|---------|
+| FreePBX/Asterisk (`voice.innotel.us`) | `192.168.1.9` |
+| Docker host (Dograh + NPM forward targets) | `192.168.1.63` |
+| LAN | `192.168.1.0/24` |
+| Router forwards (external callers only) | `5060/UDP` (SIP), optional `5061/TCP` (SIP-TLS), `10000-20000/UDP` (RTP) → `192.168.1.9` |
+| Public IP | the router's WAN address — store it in the repo's gitignored `.env` as `SERVER_IP` (a real IP is never committed) and substitute it for `<PUBLIC_IP>` below |
+
+**When you need this:** external callers reach the PBX from the internet. Without
+NAT configuration, Asterisk advertises its private IP (`192.168.1.9`) in
 SIP/SDP, so callers hear nothing (one-way or no audio). If all calls stay on the
 LAN, skip this section.
 
-### chan_pjsip (FreePBX default) — `pjsip.conf`
+### chan_pjsip (FreePBX default) — `/etc/asterisk/pjsip.conf`
 
 On the **transport** that faces the internet:
 
 ```ini
-; /etc/asterisk/pjsip.conf
 [transport-udp]
 type = transport
 protocol = udp
 bind = 0.0.0.0:5060
-local_net = 192.168.1.0/24        ; LAN subnets that are NOT NAT'd
-; replace with the router's public IP (or a STUN-derived one):
+local_net = 192.168.1.0/24        ; the only subnet that is NOT NAT'd
+; public IP from .env SERVER_IP (or a STUN-derived one):
 external_media_address = <PUBLIC_IP>
 external_signaling_address = <PUBLIC_IP>
 ; external_signaling_port = 5060  ; only if the router maps to a different port
@@ -153,30 +161,29 @@ rewrite_contact = yes
 ```
 
 Reload: `asterisk -rx "pjsip reload"`, then check the advertised contact with
-`asterisk -rx "pjsip show contacts"` — it must show the public IP.
+`asterisk -rx "pjsip show contacts"` — it must show the public IP, not
+`192.168.1.9`.
 
-### chan_sip (legacy) — `sip.conf`
+### chan_sip (legacy) — `/etc/asterisk/sip.conf`
 
 ```ini
-; /etc/asterisk/sip.conf
 [general]
 externip = <PUBLIC_IP>
 localnet = 192.168.1.0/255.255.255.0
 nat = force_rport,comedia
 ```
 
-### RTP media — `rtp.conf`
+### RTP media — `/etc/asterisk/rtp.conf`
 
 ```ini
-; /etc/asterisk/rtp.conf
 [general]
 rtpstart = 10000
 rtpend = 20000
-; only needed if the RTP streams also traverse NAT:
-externip = <PUBLIC_IP>
-; or STUN instead of a static IP:
-; stunaddr = stun.l.google.com:19302
+externip = <PUBLIC_IP>     ; only needed if the RTP streams also traverse NAT
+; stunaddr = stun.l.google.com:19302   ; STUN alternative to a static IP
 ```
+
+Keep this range (`10000-20000`) in sync with the router forward.
 
 ### FreePBX GUI (preferred over hand-editing)
 
@@ -188,6 +195,12 @@ externip = <PUBLIC_IP>
 - **Disable SIP ALG on the router** — SIP ALG mangles SIP headers and breaks
   registration/media even with correct externip. Turn it off if the router has
   the option.
+
+### Router
+
+- Forward `5060/UDP` and `10000-20000/UDP` → `192.168.1.9` (add `5061/TCP` only
+  if you enable SIP-TLS).
+- Disable **SIP ALG**.
 
 ### Verify
 
