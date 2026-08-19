@@ -19,14 +19,14 @@ There are **seven NPM proxy hosts**. Everything else in the stack binds to
 > dials outbound to `wss://ws.vai.innotel.us/...`.
 >
 > The PBX's ARI REST service is exposed through the separate
-> `ari.vai.innotel.us` proxy host. NPM forwards that hostname to
+> `ari.voice.innotel.us` proxy host. NPM forwards that hostname to
 > `192.168.1.9:8088`; port 8088 is not forwarded directly through the router.
 
 | Domain | Scheme | Forward host | Forward port | WebSockets |
 |---|---|---|---|---|
 | `vai.innotel.us` | http | `192.168.1.63` | **80** | On |
 | `api.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
-| `ari.vai.innotel.us` | http | `192.168.1.9` | **8088** | **On (required)** |
+| `ari.voice.innotel.us` | http | `192.168.1.9` | **8088** | **On (required)** |
 | `ws.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
 | `n8n.innotel.us` | http | `192.168.1.63` | **5678** | On |
 | `grist.vai.innotel.us` | http | `192.168.1.63` | **8484** | On |
@@ -73,20 +73,20 @@ port `80`) routes `/api/v1` → api, `/` → ui, and `/voice-audio` → MinIO.
 Forwards straight to the api container's published port — the internal nginx is
 not involved on this hostname.
 
-### 3. Asterisk ARI REST — `ari.vai.innotel.us`
+### 3. Asterisk ARI REST — `ari.voice.innotel.us`
 
 | Setting | Value |
 |---|---|
-| Domain Names | `ari.vai.innotel.us` |
+| Domain Names | `ari.voice.innotel.us` |
 | Scheme | `http` |
 | Forward Host | `192.168.1.9` |
 | Forward Port | `8088` |
 | WebSockets Support | **On (required)** — ARI events WebSocket |
 | Block Common Exploits | On |
-| SSL | Let's Encrypt for `ari.vai.innotel.us`, Force SSL |
+| SSL | Let's Encrypt for `ari.voice.innotel.us`, Force SSL |
 
 This proxy host forwards to the PBX's ARI REST and events service. Configure
-Dograh's ARI Endpoint URL as `https://ari.vai.innotel.us`; do not forward PBX
+Dograh's ARI Endpoint URL as `https://ari.voice.innotel.us`; do not forward PBX
 port 8088 directly at the router.
 
 ### 4. ARI media WebSocket — `ws.vai.innotel.us`

@@ -49,7 +49,7 @@ docker compose ps           # wait for healthy
 > or `unset` them before `up`.
 
 Then:
-1. Open dograh UI → configure the ARI endpoint (https://ari.vai.innotel.us) and set
+1. Open dograh UI → configure the ARI endpoint (https://ari.voice.innotel.us) and set
    the interview agent's LLM + STT + TTS (values below).
 2. Open n8n (http://localhost:5678) → import the workflow in `n8n-interview-grader.md`.
 3. Open SigNoz (http://localhost:3301) → confirm `dograh-interview-agent` traces.

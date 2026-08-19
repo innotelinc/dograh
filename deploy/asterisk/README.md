@@ -2,7 +2,7 @@
 
 This directory contains the Asterisk config files that connect your
 FreePBX/Asterisk box at **voice.innotel.us** to Dograh — ARI REST at
-**ari.vai.innotel.us**, external media WebSocket at **ws.vai.innotel.us** — using
+**ari.voice.innotel.us**, external media WebSocket at **ws.vai.innotel.us** — using
 the **Asterisk ARI** integration.
 
 Dograh talks to Asterisk over two channels. The connection direction is important:
@@ -24,7 +24,7 @@ API, never to the PBX.
 - Outbound HTTPS (port 443) from the Asterisk box to `ws.vai.innotel.us` (the
   external-media WebSocket hostname, fronted by NPM).
 - Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
-  reach the ARI service through `https://ari.vai.innotel.us`. NPM forwards that
+  reach the ARI service through `https://ari.voice.innotel.us`. NPM forwards that
   hostname to `192.168.1.9:8088`; keep port 8088 off the public router.
 
 > **Same-box install?** If FreePBX/Asterisk and Dograh run on the **same
@@ -118,7 +118,7 @@ manual edits get wiped. Use the native GUI mechanism instead:
 1. Log in to Dograh at `https://vai.innotel.us`.
 2. Go to **Telephony Configurations** → **Add configuration** → **Asterisk ARI**.
 3. Fill in:
-   - **ARI Endpoint URL**: `https://ari.vai.innotel.us` (NPM proxy to the PBX's ARI service)
+   - **ARI Endpoint URL**: `https://ari.voice.innotel.us` (NPM proxy to the PBX's ARI service)
    - **Stasis App Name**: `dograh` (the section name in `ari.conf`)
    - **App Password**: the password you set in `ari.conf`
    - **WebSocket Client Name**: `dograh` (the section name in `websocket_client.conf`)

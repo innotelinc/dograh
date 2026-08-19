@@ -50,7 +50,7 @@
     "ssl_forced": false
   },
   {
-    "domain_names": ["ari.vai.innotel.us"],
+    "domain_names": ["ari.voice.innotel.us"],
     "forward_scheme": "http",
     "forward_host": "192.168.1.9",
     "forward_port": 8088,
