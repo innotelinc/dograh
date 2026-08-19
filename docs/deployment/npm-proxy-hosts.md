@@ -28,7 +28,7 @@ There are **seven NPM proxy hosts**. Everything else in the stack binds to
 | `api.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
 | `ari.voice.innotel.us` | http | `192.168.1.9` | **8088** | **On (required)** |
 | `ws.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
-| `n8n.innotel.us` | http | `192.168.1.63` | **5678** | On |
+| `n8n.vai.innotel.us` | http | `192.168.1.63` | **5678** | On |
 | `grist.vai.innotel.us` | http | `192.168.1.63` | **8484** | On |
 | `signoz.vai.innotel.us` | http | `192.168.1.63` | **3301** | On |
 
@@ -106,11 +106,11 @@ into for external media streaming (`deploy/asterisk/websocket_client.conf`). The
 socket is HMAC-token authenticated per call (`TELEPHONY_WS_TOKEN_SECRET` +
 `TELEPHONY_WS_TOKEN_ENFORCE=true`).
 
-### 5. n8n — `n8n.innotel.us`
+### 5. n8n — `n8n.vai.innotel.us`
 
 | Setting | Value |
 |---|---|
-| Domain Names | `n8n.innotel.us` |
+| Domain Names | `n8n.vai.innotel.us` |
 | Scheme | `http` |
 | Forward Host | `192.168.1.63` |
 | Forward Port | `5678` |

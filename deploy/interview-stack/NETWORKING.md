@@ -38,7 +38,7 @@ Import → select the file). It defines seven hosts:
 | `api.vai.innotel.us` | `http://192.168.1.63:8000`| API — WebSockets **on**           |
 | `ari.voice.innotel.us` | `http://192.168.1.9:8088` | Asterisk ARI REST + events WS     |
 | `ws.vai.innotel.us`  | `http://192.168.1.63:8000`| ARI media WebSocket — WS **on**   |
-| `n8n.innotel.us`     | `http://192.168.1.63:5678`| Workflow editor + webhook receive |
+| `n8n.vai.innotel.us`     | `http://192.168.1.63:5678`| Workflow editor + webhook receive |
 | `grist.vai.innotel.us` | `http://192.168.1.63:8484`| Scores/transcripts dashboard      |
 | `signoz.vai.innotel.us` | `http://192.168.1.63:3301`| Traces + latency dashboards       |
 
@@ -59,7 +59,7 @@ Import steps:
 Notes:
 - The dograh webhook URL n8n receives on is `http://<host>:5678/webhook/interview-graded`
   — the dograh Webhook node calls it over the LAN, not through NPM. If you
-  prefer the public URL, set `N8N_WEBHOOK_URL=https://n8n.innotel.us/` in
+  prefer the public URL, set `N8N_WEBHOOK_URL=https://n8n.vai.innotel.us/` in
   the compose and point the dograh Webhook node there.
 - `ws.vai.innotel.us` and `api.vai.innotel.us` both forward to dograh's port 8000
   (the API and its ARI media WebSocket `/api/v1/telephony/ws/ari` share the

@@ -100,7 +100,7 @@
     "ssl_forced": false
   },
   {
-    "domain_names": ["n8n.innotel.us"],
+    "domain_names": ["n8n.vai.innotel.us"],
     "forward_scheme": "http",
     "forward_host": "192.168.1.63",
     "forward_port": 5678,
