@@ -15,7 +15,7 @@ dograh Webhook node ──POST──▶ n8n Webhook trigger
         ▼
 [1] HTTP Request  ──GET transcript_url──▶  transcript text
         ▼
-[2] HTTP Request  ──POST 9Router /v1/chat/completions──▶  JSON grade
+[2] HTTP Request  ──POST Ollama llama3.2 /v1/chat/completions──▶  JSON grade
         │  body: messages = [system: RUBRIC, user: transcript]
         ▼
 [3] Code node  ──parse choices[0].message.content──▶  normalized fields
@@ -57,9 +57,10 @@ dograh Webhook node ──POST──▶ n8n Webhook trigger
   `{{ $json.body.transcript_url.replace('localhost', 'host.docker.internal') }}`.
 - Response: plain text transcript. Output it as `transcript`.
 
-## Node 3 — HTTP Request: grade via 9Router
+## Node 3 — HTTP Request: grade via Ollama (llama3.2)
 
-- Method `POST`, URL `http://host.docker.internal:20128/v1/chat/completions`.
+- Method `POST`, URL `http://192.168.1.63:11434/v1/chat/completions`
+  (host-installed Ollama, model `llama3.2`; reachable from the n8n container).
 - Headers: `Content-Type: application/json`.
 - **Must set `specifyBody: "json"`** on the node, or n8n ignores `jsonBody`
   and sends an empty body (`{"":""}`). The URL field has no such gate, which
@@ -69,7 +70,7 @@ dograh Webhook node ──POST──▶ n8n Webhook trigger
 
 ```json
 {
-  "model": "{{ $('Set transcript').item.json.model }}",
+  "model": "llama3.2",
   "temperature": 0.2,
   "response_format": { "type": "json_object" },
   "messages": [
@@ -79,8 +80,9 @@ dograh Webhook node ──POST──▶ n8n Webhook trigger
 }
 ```
 
-> If 9Router doesn't support `response_format: json_object`, keep it but the
-> rubric below also demands strict JSON, so the model will comply either way.
+> Ollama's OpenAI-compatible endpoint doesn't use `response_format`; the
+> rubric below demands strict JSON and the verified workflow omits the field,
+> so the model emits JSON from the prompt alone.
 
 ## Node 3b — Code node: parse the grade
 
@@ -142,7 +144,7 @@ with header `xc-auth: <token>` and the same fields as a flat JSON object.
 
 # IT Help Desk Tier 1 — grading system prompt
 
-Paste this into the `System Prompt` node (or directly into the 9Router body).
+Paste this into the `System Prompt` node (or directly into the Ollama body).
 It is written to be pasted verbatim into the `content` of the system message.
 
 ```
@@ -245,8 +247,8 @@ aren't part of the live dograh dev stack:
   `GET /api/v1/public/download/workflow/<token>/transcript` contract; the real
   endpoint 302-redirects to a signed MinIO URL, which n8n follows by default)
   and retrieved the transcript.
-- **grading call** — n8n POSTed `{model, temperature, messages}` to the
-  9Router stand-in: the system message carried the full rubric and the user
+- **grading call** — n8n POSTed `{model, temperature, messages}` to an
+  OpenAI-compatible stand-in (the live stack now points this at Ollama llama3.2): the system message carried the full rubric and the user
   message contained the actual transcript text.
 - **Grist write** — n8n POSTed
   `{records: [{fields: {Student, Phone, RunID, Score: 86, Verdict: "pass",

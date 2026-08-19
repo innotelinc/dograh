@@ -1,3 +1,7 @@
+# SigNoz otel-collector config (v0.138 topology).
+# The collector ingests OTLP and writes DIRECTLY to ClickHouse (no hop through
+# the query-service anymore). Traces go to signoz_traces, metrics to
+# signoz_metrics. The schema is created by signoz-schema-migrator.
 receivers:
   otlp:
     protocols:
@@ -5,18 +9,6 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-  jaeger:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:14250
-      thrift_binary:
-        endpoint: 0.0.0.0:6832
-      thrift_compact:
-        endpoint: 0.0.0.0:6831
-      thrift_http:
-        endpoint: 0.0.0.0:14268
-  zipkin:
-    endpoint: 0.0.0.0:9411
 
 processors:
   batch:
@@ -24,22 +16,27 @@ processors:
     timeout: 5s
 
 exporters:
-  otlp/clickhouse:
-    endpoint: signoz-query-service:4317
-    tls:
-      insecure: true
+  clickhousetraces:
+    datasource: tcp://signoz-clickhouse:9000/signoz_traces
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      queue_size: 100
+      num_consumers: 5
+  signozclickhousemetrics:
+    dsn: tcp://signoz-clickhouse:9000/signoz_metrics
 
 service:
   pipelines:
     traces:
-      receivers: [otlp, jaeger, zipkin]
+      receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/clickhouse]
+      exporters: [clickhousetraces]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/clickhouse]
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/clickhouse]
+      exporters: [signozclickhousemetrics]

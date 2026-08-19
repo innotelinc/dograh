@@ -25,10 +25,9 @@
 #  and SigNoz UI (3301) binds to 127.0.0.1 — not reachable on the LAN. The four
 #  exceptions must stay on 0.0.0.0 because n8n reaches 8484/20128 via
 #  host.docker.internal (host gateway IP) and 5678/3301 are NPM proxy targets.
-#  3301  SigNoz UI                       3300  SigNoz query-service API
-#  4317/4318  OTel gRPC/HTTP ingest      8888/8889  otel-collector metrics
-#  19000 ClickHouse native (remapped)    8123  ClickHouse HTTP  19189 keeper
-#  9093  alertmanager
+#  3301  SigNoz UI + API (unified binary)  4317/4318  OTel gRPC/HTTP ingest
+#  8888/8889  otel-collector metrics     19000 ClickHouse native (remapped)
+#  8123  ClickHouse HTTP                 9093  alertmanager
 #
 #  Start:  docker compose up -d
 #  Env:    copy .env.example to .env first (OSS_JWT_SECRET is required).
@@ -144,18 +143,16 @@ services:
 
   # ── Local TTS: Kokoro-82M via kokoro-fastapi (OpenAI-compatible) ──────────
   kokoro:
-    image: ${KOKORO_IMAGE:-remarker/kokoro-fastapi:latest}
+    image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}
     container_name: kokoro-fastapi
     restart: unless-stopped
-    # GPU? Use remarker/kokoro-fastapi-cuda:latest and add:
+    # GPU? Use ghcr.io/remsky/kokoro-fastapi-gpu:latest and add:
     #   deploy: { resources: { reservations: { devices: [ { driver: nvidia, count: 1, capabilities: [gpu] } ] } } }
-    command: ["--port", "8880", "--model-dir", "/models"]
+    # The image bakes in kokoro-v1.0.onnx + voices (entrypoint serves :8880).
     ports:
-      - "127.0.0.1:8880:8880"   # loopback only — dograh (host mode) → 127.0.0.1:8880
-    volumes:
-      - kokoro_models:/models   # caches kokoro-v1.0.onnx + voices-v1.0.bin
+      - "127.0.0.1:8880:8880"   # loopback only
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health', timeout=5)"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -169,21 +166,20 @@ services:
   # offline. GPU: use ghcr.io/speaches-ai/speaches:latest-cuda and set
   # SPEACHES_WHISPER_DEVICE=cuda (+ deploy.resources.reservations.devices).
   speaches:
-    image: ${SPEACHES_IMAGE:-ghcr.io/speaches-ai/speaches:latest}
+    image: ${SPEACHES_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
     container_name: speaches
     restart: unless-stopped
     environment:
-      SPEACHES_WHISPER_MODEL: "${SPEACHES_WHISPER_MODEL:-Systran/faster-distil-whisper-small.en}"
-      SPEACHES_WHISPER_DEVICE: "${SPEACHES_WHISPER_DEVICE:-cpu}"     # cpu | cuda
-      SPEACHES_WHISPER_COMPUTE_TYPE: "${SPEACHES_WHISPER_COMPUTE_TYPE:-int8}"
-      SPEACHES_HOST: "0.0.0.0"
-      SPEACHES_PORT: "8000"
+      WHISPER__INFERENCE_DEVICE: "${SPEACHES_WHISPER_DEVICE:-cpu}"      # cpu | cuda | auto
+      WHISPER__COMPUTE_TYPE: "${SPEACHES_WHISPER_COMPUTE_TYPE:-int8}"
+      UVICORN_HOST: "0.0.0.0"
+      UVICORN_PORT: "8000"
     ports:
-      - "127.0.0.1:8001:8000"   # loopback only — dograh (host mode) → 127.0.0.1:8001
+      - "127.0.0.1:8001:8000"   # loopback only
     volumes:
-      - speaches_models:/root/.cache/huggingface   # cached model → offline runtime
+      - speaches_models:/home/ubuntu/.cache/huggingface/hub   # cached models → offline runtime
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8000/v1/models', timeout=5)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=5)\""]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -274,24 +270,87 @@ services:
       start_period: 30s
     networks: [interview-net]
 
-  # ── Observability: SigNoz (ClickHouse + otel-collector + query-service + UI)
-  # Standard "clickhouse-setup" topology. Config XMLs live next to this file.
+  # ── Observability: SigNoz v0.138 topology — postgres metastore + separate
+  # ClickHouse Keeper + unified `signoz` binary (UI + API on 8080). Config
+  # YAMLs live next to this file.
+  signoz-metastore-postgres:
+    image: postgres:16
+    container_name: signoz-metastore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: signoz
+      POSTGRES_USER: signoz
+      POSTGRES_PASSWORD: signoz
+    volumes:
+      - signoz_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signoz -d signoz"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [interview-net]
+
+  signoz-clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:25.12.5
+    container_name: signoz-clickhouse-keeper
+    restart: unless-stopped
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper.yaml"]
+    volumes:
+      - keeper_data:/var/lib/clickhouse-keeper
+      - ./clickhouse-keeper.yaml:/etc/clickhouse-keeper/keeper.yaml:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-keeper-client", "-h", "localhost", "-p", "9181", "-q", "ls"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [interview-net]
+
   signoz-clickhouse:
-    image: clickhouse/clickhouse-server:23.8
+    image: clickhouse/clickhouse-server:25.12.5
     container_name: signoz-clickhouse
     restart: unless-stopped
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+      CLICKHOUSE_CONFIG: /etc/clickhouse-server/config.yaml
     ports:
       - "127.0.0.1:19000:9000"   # native protocol — remapped off 9000 (minio owns it); loopback only
       - "127.0.0.1:8123:8123"    # HTTP — loopback only
-      - "127.0.0.1:19189:9189"   # keeper — loopback only
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./clickhouse-config.xml:/etc/clickhouse-server/config.xml
-      - ./users.xml:/etc/clickhouse-server/users.xml
+      - ./clickhouse-config.yaml:/etc/clickhouse-server/config.yaml:ro
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
+    depends_on:
+      signoz-clickhouse-keeper: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [interview-net]
+
+  signoz-schema-migrator:
+    # One-shot: creates the ClickHouse schema (bootstrap + sync + async
+    # migrations) before the collector/query-service start.
+    image: signoz/signoz-otel-collector:latest
+    container_name: signoz-schema-migrator
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        /signoz-otel-collector migrate ready &&
+        /signoz-otel-collector migrate bootstrap &&
+        /signoz-otel-collector migrate sync up &&
+        /signoz-otel-collector migrate async up
+    environment:
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN: "tcp://signoz-clickhouse:9000"
+    depends_on:
+      signoz-clickhouse: { condition: service_healthy }
     networks: [interview-net]
 
   signoz-otel-collector:
@@ -307,56 +366,36 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     depends_on:
-      signoz-query-service: { condition: service_healthy }
+      signoz-schema-migrator: { condition: service_completed_successfully }
     networks: [interview-net]
 
-  signoz-query-service:
-    # NOTE: no command override — the image's default entrypoint (./signoz) is
-    # used. Passing -config=/root/config.yaml crashes it (that flag expects a
-    # prometheus metrics config; the file doesn't exist in the image). The core
-    # app config comes from the env vars below.
-    # NOTE: no command override — the image's default entrypoint (./signoz) is
-    # used. Passing -config=/root/config.yaml crashes it (that flag expects a
-    # prometheus metrics config; the file doesn't exist in the image). The core
-    # app config comes from the env vars below.
-    image: signoz/query-service:latest
-    container_name: signoz-query-service
+  signoz:
+    # Unified binary (v0.138): serves BOTH the query API and the UI on 8080,
+    # replacing the old signoz-query-service + signoz-frontend split.
+    image: signoz/signoz:latest
+    container_name: signoz
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3300:8080"   # SigNoz API — loopback only; the new signoz binary serves on 8080
+      - "0.0.0.0:3301:8080"   # SigNoz UI + API → http://localhost:3301 — 0.0.0.0 (NPM proxy target)
     environment:
-      CLICKHOUSE_DB: "signoz_traces"
-      CLICKHOUSE_USER: "default"
-      CLICKHOUSE_PASSWORD: "asdf1234"
-      CLICKHOUSE_HOST: "signoz-clickhouse"
-      CLICKHOUSE_PORT: "9000"
-      CLICKHOUSE_CLUSTER: "clickhouse_cluster"
-      SIGNOZ_OTEL_COLLECTOR_ENDPOINT: "signoz-otel-collector:4317"
+      SIGNOZ_SQLSTORE_PROVIDER: "postgres"
+      SIGNOZ_SQLSTORE_POSTGRES_DSN: "postgres://signoz:signoz@signoz-metastore-postgres:5432/signoz?sslmode=disable"
       SIGNOZ_TELEMETRYSTORE_PROVIDER: "clickhouse"
-      GODEBUG: "netdns=go"
-      TELEMETRY_ENABLED: "false"
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: "tcp://signoz-clickhouse:9000"
+      # Session-signing key. Override via .env (SIGNOZ_JWT_SECRET); the default
+      # is a random value generated at setup so sessions aren't forgeable.
+      SIGNOZ_TOKENIZER_JWT_SECRET: "${SIGNOZ_JWT_SECRET:-0df51a148293dcf934bdf22c2c1a1be797732f98a977ecb2e7b4e851826cc67b}"
     volumes:
-      - query-service-data:/var/lib/signoz
+      - signoz_data:/var/lib/signoz
     depends_on:
-      signoz-clickhouse: { condition: service_started }
+      signoz-metastore-postgres: { condition: service_healthy }
+      signoz-clickhouse: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks: [interview-net]
-
-  signoz-frontend:
-    image: signoz/frontend:latest
-    container_name: signoz-frontend
-    restart: unless-stopped
-    ports:
-      - "0.0.0.0:3301:3301"   # SigNoz UI → http://localhost:3301 — 0.0.0.0 (NPM proxy target)
-    environment:
-      SIGNOZ_FRONTEND_QUERY_SERVICE_ENDPOINT: "http://signoz-query-service:8080"
-    depends_on:
-      signoz-query-service: { condition: service_healthy }
+      retries: 10
+      start_period: 60s
     networks: [interview-net]
 
   signoz-alertmanager:
@@ -380,7 +419,9 @@ volumes:
   grist_data:
   nocodb_data:
   clickhouse_data:
-  query-service-data:
+  keeper_data:
+  signoz_postgres_data:
+  signoz_data:
   alertmanager-data:
 
 networks:

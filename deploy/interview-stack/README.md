@@ -55,28 +55,32 @@ Then:
 3. Open SigNoz (http://localhost:3301) → confirm `dograh-interview-agent` traces.
 4. Open Grist (http://localhost:8484) → create the `Interviews` table.
 
-## Model wiring inside dograh (UI config, no code for the LLM)
+## Model wiring inside dograh (UI config, no code changes)
 
-| Setting  | LLM (9Router)                        | STT (speaches)                     | TTS (kokoro-fastapi)              |
-|----------|--------------------------------------|-----------------------------------|-----------------------------------|
-| provider | OpenAI                               | speaches                          | OpenAI                            |
-| model    | (model id exposed by 9Router)        | Systran/faster-distil-whisper-small.en | kokoro                        |
-| voice    | —                                    | —                                 | af_heart (or am_michael, ...)     |
-| language | —                                    | en                                | —                                 |
-| base_url | http://127.0.0.1:20128/v1            | http://127.0.0.1:8001/v1          | http://127.0.0.1:8880/v1          |
-| api_key  | anything (local, unauthenticated)    | (blank — self-hosted)             | anything                          |
+All three stages use dograh's first-class **`speaches`** provider (an
+OpenAI-compatible client that forwards `base_url` to whatever local server is
+behind it). No code changes are needed — the provider, config schema, and
+`service_factory.py` branches already ship in dograh.
 
-**No code change needed for STT.** dograh already ships a first-class
-`speaches` STT provider (`SpeachesSTTService` in the factory + config schema in
-the registry). The `speaches` container above is the OpenAI-compatible
-faster-whisper server it points at.
+| Setting  | LLM (Ollama)                         | STT (speaches)                       | TTS (kokoro-fastapi)             |
+|----------|--------------------------------------|--------------------------------------|----------------------------------|
+| provider | speaches                             | speaches                             | speaches                         |
+| model    | llama3.2                             | Systran/faster-distil-whisper-small.en | kokoro                         |
+| voice    | —                                    | —                                    | af_heart (or am_michael, ...)    |
+| language | —                                    | en                                   | —                                |
+| base_url | http://192.168.1.63:11434/v1         | http://speaches:8000/v1              | http://kokoro:8880/v1            |
+| api_key  | (blank — self-hosted)                | (blank — self-hosted)                | (blank — self-hosted)            |
 
-**One code change required for TTS:** pipecat's `OpenAITTSService` rejects any
-voice not in its hardcoded OpenAI list, so Kokoro voices like `af_heart` fail.
-Copy `kokoro_tts_service.py` to `api/services/pipecat/kokoro_tts.py` and swap
-the import in `service_factory.py` (instructions are in the file header). The
-LLM path needs no code change — the factory already forwards `base_url` to
-`OpenAILLMService`.
+> The table's `base_url` values are the **production** URLs as seen from the
+> `vai-api-1` container (which joins the interview-stack bridge and reaches
+> speaches/kokoro by service name, Ollama on the host LAN IP). For the
+> host-mode `dograh-api` in this compose, use `http://127.0.0.1:8001/v1` (STT),
+> `http://127.0.0.1:8880/v1` (TTS), and `http://192.168.1.63:11434/v1` (LLM)
+> instead.
+
+**TTS note:** `SpeachesTTSService` (pipecat) already passes provider-specific
+voices like `af_heart` through verbatim and requests `pcm` output, so Kokoro
+voices work without the earlier `kokoro_tts.py` shim. That shim was removed.
 
 > Note: `validate_user_configured_service_url` allows localhost URLs because
 > `DEPLOYMENT_MODE` defaults to `oss`. The compose sets it explicitly.
@@ -104,10 +108,10 @@ at it in the UI:
 
 | Setting  | Value |
 |----------|-------|
-| provider | OpenAI |
+| provider | speaches |
 | model    | `llama3.2` |
 | base_url | `http://192.168.1.63:11434/v1` |
-| api_key  | anything (local, unauthenticated) |
+| api_key  | (blank — self-hosted) |
 
 n8n's grading node uses the same base URL with `model: llama3.2`.
 
@@ -146,7 +150,7 @@ Importable dashboard: **`signoz-pipeline-latency-dashboard.json`**
 3. If your SigNoz version rejects the import schema, rebuild the panels from
    the query reference below (each panel is one ClickHouse query).
 
-Query reference (table: `signoz_traces.signoz_index_v2`):
+Query reference (table: `signoz_traces.signoz_index_v3`):
 
 ```sql
 -- per-call table (worst stage latency, total = LLM+TTS+STT)
@@ -155,7 +159,7 @@ SELECT traceID, toDateTime(timestamp) AS call_time,
   round(maxIf(durationNano/1e9, name='tts'),3) AS tts_s,
   round(maxIf(durationNano/1e9, name='stt'),3) AS stt_s,
   round(maxIf(durationNano/1e9, name='llm')+maxIf(durationNano/1e9, name='tts')+maxIf(durationNano/1e9, name='stt'),3) AS pipeline_s
-FROM signoz_traces.signoz_index_v2
+FROM signoz_traces.signoz_index_v3
 WHERE serviceName='dograh-pipeline' AND timestamp >= now() - INTERVAL 24 HOUR
 GROUP BY traceID, call_time ORDER BY call_time DESC LIMIT 200;
 
@@ -164,7 +168,7 @@ SELECT toStartOfMinute(call_time) AS t, quantile(0.5)(pipeline_s) AS p50_s,
   quantile(0.95)(pipeline_s) AS p95_s
 FROM (SELECT traceID, toDateTime(timestamp) AS call_time,
         maxIf(durationNano/1e9,name='llm')+maxIf(durationNano/1e9,name='tts')+maxIf(durationNano/1e9,name='stt') AS pipeline_s
-      FROM signoz_traces.signoz_index_v2
+      FROM signoz_traces.signoz_index_v3
       WHERE serviceName='dograh-pipeline' AND timestamp >= now() - INTERVAL 1 HOUR
       GROUP BY traceID, call_time)
 GROUP BY t ORDER BY t;
@@ -173,7 +177,7 @@ GROUP BY t ORDER BY t;
 SELECT toStartOfMinute(timestamp) AS t,
   quantile(0.5)(attributesNumber['metrics.ttfb']) AS p50_s,
   quantile(0.95)(attributesNumber['metrics.ttfb']) AS p95_s
-FROM signoz_traces.signoz_index_v2
+FROM signoz_traces.signoz_index_v3
 WHERE serviceName='dograh-pipeline' AND name='llm'
   AND has(attributesNumber, 'metrics.ttfb')
   AND timestamp >= now() - INTERVAL 1 HOUR
@@ -224,7 +228,7 @@ curl -s http://127.0.0.1:20128/v1/chat/completions \
 
 # 5. SigNoz ingest
 curl -s http://127.0.0.1:4318/v1/traces -o /dev/null -w '%{http_code}\n'   # expect 200 (rejects bad payload, accepts OTLP)
-curl -s http://127.0.0.1:3300/health
+curl -s http://127.0.0.1:3301/api/v1/health   # unified signoz UI+API
 
 # 6. n8n + Grist reachable
 curl -s http://127.0.0.1:5678/healthz
@@ -245,9 +249,11 @@ curl -s http://127.0.0.1:8484 -o /dev/null -w '%{http_code}\n'
   `127.0.0.1:20128` and n8n at `host.docker.internal:20128`.
 - **kokoro-fastapi image tag** — `remarker/kokoro-fastapi:latest` (CPU) and
   `-cuda` (GPU) are the published tags; confirm they still exist on Docker Hub.
-- **SigNoz versions** — the compose pins the standard `clickhouse-setup`
-  topology. If SigNoz's compose evolves, prefer pulling their current
-  `deploy/docker/clickhouse-setup/` configs and diff against these files.
+- **SigNoz versions** — the compose pins the v0.138 "Foundry" topology
+  (separate ClickHouse Keeper, Postgres metastore, unified `signoz` binary,
+  schema created by the collector's `migrate` command). The old
+  `clickhouse-setup` + `query-service`/`frontend` split is deprecated; keep the
+  SigNoz images on a single version tag rather than `latest` to avoid skew.
 - **speaches image / env vars** — `ghcr.io/speaches-ai/speaches:latest` and the
   `SPEACHES_*` env vars match the project's documented interface (dograh's
   registry even links to `github.com/speaches-ai/speaches`). Confirm the tag

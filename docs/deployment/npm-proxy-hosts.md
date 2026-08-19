@@ -115,8 +115,9 @@ socket is HMAC-token authenticated per call (`TELEPHONY_WS_TOKEN_SECRET` +
 | WebSockets Support | On |
 | SSL | Let's Encrypt, Force SSL |
 
-**Do not** change this to `3300` or `8080` — those are the internal
-query-service API ports. `3301` is the SigNoz UI.
+The unified `signoz` binary serves both the UI and the query API on port
+`8080`; the compose publishes that to host port `3301`, which is what NPM
+forwards to. There is no separate `3300` query-service port anymore.
 
 ## Fastest path — import the JSON
 
@@ -143,10 +144,9 @@ router:
 | `8880` | kokoro-fastapi (TTS) |
 | `8001` | speaches (STT) |
 | `20128` | 9Router (LLM) |
-| `3300` | SigNoz query-service API |
 | `4317`, `4318` | SigNoz OTel ingest (gRPC/HTTP) |
 | `8888`, `8889` | otel-collector metrics |
-| `19000`, `8123`, `19189` | ClickHouse (native/HTTP/keeper) |
+| `19000`, `8123` | ClickHouse (native/HTTP) |
 | `9093` | SigNoz alertmanager |
 
 ## Router forwards (separate from NPM)
