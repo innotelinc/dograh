@@ -63,9 +63,12 @@ Notes:
 - `ws.innotel.us` and `api.vai.innotel.us` both forward to dograh's port 8000
   (the API and its ARI media WebSocket `/api/v1/telephony/ws/ari` share the
   port). The Asterisk box connects to `wss://ws.innotel.us/api/v1/telephony/ws/ari`
-  (see `deploy/asterisk/websocket_client.conf`). The media WebSocket is
-  token-protected only if you set `TELEPHONY_WS_TOKEN_SECRET`+`_ENFORCE` — for a
-  capstone, prefer keeping the API LAN-only and using NPM only for UI/n8n/Grist.
+  (see `deploy/asterisk/websocket_client.conf`). This deployment sets
+  `TELEPHONY_WS_TOKEN_SECRET` + `TELEPHONY_WS_TOKEN_ENFORCE=true` in the Dograh
+  server's `.env`, so the public media socket is **HMAC-token authenticated**
+  per call — the ARI manager mints the token and appends it via the `v()`
+  transport params, so the static `websocket_client.conf` URI itself stays
+  tokenless. Connections without a valid token are rejected (close `4401`).
 
 ## Tier 3 — LAN/docker-internal ONLY (never forward, never proxy)
 

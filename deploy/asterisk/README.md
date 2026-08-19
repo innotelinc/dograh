@@ -41,6 +41,17 @@ Dograh talks to Asterisk over two channels:
 | `extensions.conf` | Route inbound calls into `Stasis(dograh)` (vanilla Asterisk only) | merge into `/etc/asterisk/extensions.conf` |
 | `websocket_client.conf` | External media stream to `wss://ws.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
 
+> **Media-socket auth (already enabled):** the media WebSocket is public
+> (``ws.innotel.us``) and authenticated per call — Dograh appends
+> ``?workflow_id=…&organization_id=…&workflow_run_id=…&token=…`` to the URL
+> dynamically via the ``v()`` transport params whenever it creates the
+> external-media channel, so the **static ``websocket_client.conf`` URI needs no
+> token and no change**. The token is an HMAC-SHA256 of the id triple signed
+> with ``TELEPHONY_WS_TOKEN_SECRET`` (set in the Dograh server's gitignored
+> ``.env``); with ``TELEPHONY_WS_TOKEN_ENFORCE=true`` a connection without a
+> valid token is rejected with close code ``4401``. If you ever see
+> ``UNVERIFIED media socket`` in Dograh's logs, the two sides are out of sync.
+
 ## Steps
 
 1. Copy the files to your Asterisk box (e.g. `/etc/asterisk/`), merging

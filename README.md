@@ -200,6 +200,8 @@ All secrets live in `.env` (gitignored — never commit it). Required keys:
 | `TURN_HOST` | `vai.innotel.us` |
 | `TURN_SECRET` | Random secret for TURN REST credentials |
 | `OSS_JWT_SECRET` | Random secret signing JWT auth tokens |
+| `TELEPHONY_WS_TOKEN_SECRET` | Random secret HMAC-signing each media-WebSocket URL (set — the socket is public via `ws.innotel.us`) |
+| `TELEPHONY_WS_TOKEN_ENFORCE` | `true` — media-WS connections without a valid per-call token are rejected (close `4401`) |
 | `POSTGRES_PASSWORD` | PostgreSQL password (baked into the volume on first init) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO credentials |
 | `REDIS_PASSWORD` | Redis password |
