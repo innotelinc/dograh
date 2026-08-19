@@ -9,9 +9,9 @@ your own LLM / STT / TTS keys, your own data, and your own infrastructure.
 with a deployment tuned for Innotel's own stack:
 
 - **Self-hosted** on Innotel infrastructure, not a third-party SaaS.
-- **Fronted by Nginx Proxy Manager** at **https://vai.innotel.us** — TLS is
-  handled by NPM, and the platform's internal nginx just routes traffic between
-  the API, UI, and object storage.
+- **Fronted by Nginx Proxy Manager** — web UI at **https://vai.innotel.us** and
+  the platform API at **https://api.vai.innotel.us** — TLS is handled by NPM,
+  and the platform's internal nginx routes UI/API/object-storage traffic.
 - **Wired into Innotel's FreePBX / Asterisk** box at **voice.innotel.us** using
   the Asterisk ARI integration. Existing PBX extensions can be answered by AI
   agents, and calls can be transferred back to human agents.

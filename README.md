@@ -2,7 +2,9 @@
 
 This is **innotelinc/dograh**, a fork of the open-source [Dograh](https://github.com/dograh-hq/dograh)
 voice-AI platform, deployed by **Innotel** and fronted by **Nginx Proxy Manager**
-(NPM) at **https://vai.innotel.us**.
+(NPM): the web UI at **https://vai.innotel.us**, and the platform API at
+**https://api.vai.innotel.us** (used by the UI, the Asterisk external-media
+WebSocket, and public transcript/recording download links).
 
 The platform is wired to Innotel's **FreePBX / Asterisk** box at
 **voice.innotel.us** through the built-in **Asterisk ARI** integration, so
@@ -17,17 +19,21 @@ existing PBX extensions can be answered by AI voice agents.
 
 ```
         Internet
-           │  https://vai.innotel.us
-           ▼
-┌─────────────────────────────┐
-│  Nginx Proxy Manager (NPM)  │   terminates TLS, forwards plain HTTP
-│  (proxy.innotel.us)         │
-└─────────────┬───────────────┘
-              │ http://proxy.innotel.us:80
-              ▼
-┌─────────────────────────────┐
-│  internal nginx (Docker)    │   routes /api/v1 → api, / → ui, /voice-audio → minio
-└──────┬──────────┬───────────┘
+           │  https://vai.innotel.us        https://api.vai.innotel.us
+           ▼                               ▼
+┌──────────────────────────────────────────────────────┐
+│             Nginx Proxy Manager (NPM)                │
+│             (proxy.innotel.us)                       │
+│  vai.innotel.us → internal nginx :80                 │
+│  api.vai.innotel.us → api container :8000 (WS on)    │
+└─────────────┬────────────────────────────┬───────────┘
+              │ http://proxy.innotel.us:80 │ http://<docker-host>:8000
+              ▼                            ▼
+┌─────────────────────────────┐   ┌──────────────────┐
+│  internal nginx (Docker)    │   │ api (uvicorn)     │
+│  routes /api/v1 → api,      │   │ /api/v1/* REST    │
+│  / → ui, /voice-audio→minio │   │ /ws/ari media WS  │
+└──────┬──────────┬───────────┘   └──────────────────┘
        ▼          ▼
    api:8000    ui:3010        minio:9000 (private), postgres, redis, coturn
        │
@@ -82,7 +88,9 @@ openssl req -x509 -nodes -newkey rsa:2048 \
 
 ### Nginx Proxy Manager
 
-Create a **Proxy Host** on your NPM machine:
+Create **two Proxy Hosts** on your NPM machine:
+
+**1. Web UI**
 
 | Setting | Value |
 |---------|-------|
@@ -95,6 +103,21 @@ Create a **Proxy Host** on your NPM machine:
 | SSL | Let's Encrypt for `vai.innotel.us` |
 
 No custom locations are needed — the internal nginx does all the routing.
+
+**2. Platform API** (REST + the ARI external-media WebSocket)
+
+| Setting | Value |
+|---------|-------|
+| Domain Names | `api.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `<docker-host LAN IP>` (e.g. `192.168.1.63`) |
+| Forward Port | `8000` |
+| WebSockets Support | **On** (required for `/api/v1/telephony/ws/ari`) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `api.vai.innotel.us` |
+
+Forwards straight to the api container's published port — the internal nginx
+is not involved on this hostname.
 
 ### Firewall
 
@@ -171,9 +194,9 @@ All secrets live in `.env` (gitignored — never commit it). Required keys:
 | `ENVIRONMENT` | `production` |
 | `SERVER_IP` | Public IPv4 of the Docker host — set in the gitignored `.env` only (real IP never committed) |
 | `PUBLIC_HOST` | `vai.innotel.us` |
-| `PUBLIC_BASE_URL` | `https://vai.innotel.us` |
-| `BACKEND_API_ENDPOINT` | `https://vai.innotel.us` |
-| `MINIO_PUBLIC_ENDPOINT` | `https://vai.innotel.us` |
+| `PUBLIC_BASE_URL` | `https://vai.innotel.us` (UI origin) |
+| `BACKEND_API_ENDPOINT` | `https://api.vai.innotel.us` (API origin — media WS, download links) |
+| `MINIO_PUBLIC_ENDPOINT` | `https://vai.innotel.us` (served via internal nginx `/voice-audio`) |
 | `TURN_HOST` | `vai.innotel.us` |
 | `TURN_SECRET` | Random secret for TURN REST credentials |
 | `OSS_JWT_SECRET` | Random secret signing JWT auth tokens |

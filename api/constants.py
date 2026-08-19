@@ -19,6 +19,11 @@ LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID")
 
+# Self-hosted observability: full OTLP HTTP traces endpoint of a local SigNoz
+# otel-collector (e.g. http://127.0.0.1:4318/v1/traces). When set, pipeline
+# spans are exported there instead of being dropped when no Langfuse creds exist.
+SIGNOZ_OTLP_ENDPOINT = os.getenv("SIGNOZ_OTLP_ENDPOINT")
+
 # Tracing as a whole is optional, but a half-configured Langfuse silently
 # produces dead trace links, so fail loudly at import instead.
 if all([LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY]) and not (

@@ -1,0 +1,45 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  jaeger:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14250
+      thrift_binary:
+        endpoint: 0.0.0.0:6832
+      thrift_compact:
+        endpoint: 0.0.0.0:6831
+      thrift_http:
+        endpoint: 0.0.0.0:14268
+  zipkin:
+    endpoint: 0.0.0.0:9411
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+
+exporters:
+  otlp/clickhouse:
+    endpoint: signoz-query-service:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger, zipkin]
+      processors: [batch]
+      exporters: [otlp/clickhouse]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/clickhouse]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/clickhouse]

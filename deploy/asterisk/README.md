@@ -1,7 +1,7 @@
 # Asterisk / FreePBX ARI wiring (voice.innotel.us)
 
 This directory contains the Asterisk config files that connect your
-FreePBX/Asterisk box at **voice.innotel.us** to Dograh at **vai.innotel.us**
+FreePBX/Asterisk box at **voice.innotel.us** to Dograh at **api.vai.innotel.us**
 using the **Asterisk ARI** integration.
 
 Dograh talks to Asterisk over two channels:
@@ -17,7 +17,8 @@ Dograh talks to Asterisk over two channels:
   (Asterisk 20 LTS or 22+ known-working; verify with
   `asterisk -rx "module show like chan_websocket"` and
   `asterisk -rx "module show like res_websocket_client"`).
-- Outbound HTTPS (port 443) from the Asterisk box to `vai.innotel.us`.
+- Outbound HTTPS (port 443) from the Asterisk box to `api.vai.innotel.us`
+  (the Dograh API endpoint — the external-media WebSocket lives there).
 - Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
   reach `http://192.168.1.9:8088` (the PBX's internal LAN address). Open it in the FreePBX firewall for
   `proxy.innotel.us` only.
@@ -37,7 +38,7 @@ Dograh talks to Asterisk over two channels:
 | `ari.conf` | ARI user `dograh` (Stasis app name + password) | `/etc/asterisk/ari.conf` |
 | `http.conf` | Enable the Asterisk HTTP server on port 8088 | `/etc/asterisk/http.conf` |
 | `extensions.conf` | Route inbound calls into `Stasis(dograh)` (vanilla Asterisk only) | merge into `/etc/asterisk/extensions.conf` |
-| `websocket_client.conf` | External media stream to `wss://vai.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
+| `websocket_client.conf` | External media stream to `wss://api.vai.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
 
 ## Steps
 
@@ -115,6 +116,90 @@ manual edits get wiped. Use the native GUI mechanism instead:
 > Note: Dograh's external media channel uses **G.711 µ-law (`ulaw`)**. Make sure
 > any PJSIP endpoint or SIP trunk that places/receives calls through Dograh
 > allows `ulaw` (e.g. `allow=ulaw` on the endpoint).
+
+## NAT: externip / localnet (one-way audio fix)
+
+**When you need this:** external callers reach the PBX from the internet —
+router forwards **SIP 5060/UDP** (and optionally 5061/TCP for SIP-TLS) plus the
+**RTP range** (default `10000-20000`/UDP, match `rtp.conf`) to the PBX at
+`192.168.1.9`. Without NAT configuration, Asterisk advertises its private IP in
+SIP/SDP, so callers hear nothing (one-way or no audio). If all calls stay on the
+LAN, skip this section.
+
+### chan_pjsip (FreePBX default) — `pjsip.conf`
+
+On the **transport** that faces the internet:
+
+```ini
+; /etc/asterisk/pjsip.conf
+[transport-udp]
+type = transport
+protocol = udp
+bind = 0.0.0.0:5060
+local_net = 192.168.1.0/24        ; LAN subnets that are NOT NAT'd
+; replace with the router's public IP (or a STUN-derived one):
+external_media_address = <PUBLIC_IP>
+external_signaling_address = <PUBLIC_IP>
+; external_signaling_port = 5060  ; only if the router maps to a different port
+```
+
+On each **endpoint** that takes external calls:
+
+```ini
+[6001]
+type = endpoint
+direct_media = no        ; force media through Asterisk so NAT rewriting applies
+rewrite_contact = yes
+```
+
+Reload: `asterisk -rx "pjsip reload"`, then check the advertised contact with
+`asterisk -rx "pjsip show contacts"` — it must show the public IP.
+
+### chan_sip (legacy) — `sip.conf`
+
+```ini
+; /etc/asterisk/sip.conf
+[general]
+externip = <PUBLIC_IP>
+localnet = 192.168.1.0/255.255.255.0
+nat = force_rport,comedia
+```
+
+### RTP media — `rtp.conf`
+
+```ini
+; /etc/asterisk/rtp.conf
+[general]
+rtpstart = 10000
+rtpend = 20000
+; only needed if the RTP streams also traverse NAT:
+externip = <PUBLIC_IP>
+; or STUN instead of a static IP:
+; stunaddr = stun.l.google.com:19302
+```
+
+### FreePBX GUI (preferred over hand-editing)
+
+- **Settings → Asterisk SIP Settings → NAT**: set **External Address** to the
+  public IP and **Local Networks** to `192.168.1.0/255.255.255.0` (this writes
+  `sip.conf`'s `externip`/`localnet`).
+- For PJSIP trunks/extensions: **Connectivity → Trunks / Extensions → the
+  NAT/Advanced tab** per endpoint (`direct_media` off, contact rewrite on).
+- **Disable SIP ALG on the router** — SIP ALG mangles SIP headers and breaks
+  registration/media even with correct externip. Turn it off if the router has
+  the option.
+
+### Verify
+
+```bash
+asterisk -rx "pjsip show contacts"   # or: asterisk -rx "sip show peers"
+asterisk -rx "rtp set debug on"      # during a test call, then "rtp set debug off"
+asterisk -rx "core set verbose 4"
+```
+
+A successful external call shows the caller's audio reaching the PBX (RTP
+received from the public IP) and the `ulaw` codec negotiated (Dograh's external
+media channel uses G.711 µ-law).
 
 ## Troubleshooting
 
