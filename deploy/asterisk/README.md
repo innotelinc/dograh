@@ -2,10 +2,13 @@
 
 This directory contains the Asterisk config files that connect your
 FreePBX/Asterisk box at **voice.innotel.us** to Dograh — ARI REST at
-**api.vai.innotel.us**, external media WebSocket at **ws.innotel.us** — using
+**ari.vai.innotel.us**, external media WebSocket at **ws.vai.innotel.us** — using
 the **Asterisk ARI** integration.
 
-Dograh talks to Asterisk over two channels:
+Dograh talks to Asterisk over two channels. The connection direction is important:
+VAI connects to the PBX's internal ARI endpoint, while Asterisk opens the external
+media WebSocket outbound to VAI. `ws.vai.innotel.us` must therefore proxy to the VAI
+API, never to the PBX.
 
 1. **ARI REST + WebSocket** — Dograh controls calls (answer, hangup, transfer)
    and listens for `StasisStart` events on the ARI WebSocket.
@@ -18,11 +21,11 @@ Dograh talks to Asterisk over two channels:
   (Asterisk 20 LTS or 22+ known-working; verify with
   `asterisk -rx "module show like chan_websocket"` and
   `asterisk -rx "module show like res_websocket_client"`).
-- Outbound HTTPS (port 443) from the Asterisk box to `ws.innotel.us` (the
+- Outbound HTTPS (port 443) from the Asterisk box to `ws.vai.innotel.us` (the
   external-media WebSocket hostname, fronted by NPM).
 - Port **8088** reachable from the Dograh server (`proxy.innotel.us`) so Dograh can
-  reach `http://192.168.1.9:8088` (the PBX's internal LAN address). Open it in the FreePBX firewall for
-  `proxy.innotel.us` only.
+  reach the ARI service through `https://ari.vai.innotel.us`. NPM forwards that
+  hostname to `192.168.1.9:8088`; keep port 8088 off the public router.
 
 > **Same-box install?** If FreePBX/Asterisk and Dograh run on the **same
 > server**, run `sudo ./scripts/setup_inplace.sh` from the Dograh repo instead
@@ -39,10 +42,10 @@ Dograh talks to Asterisk over two channels:
 | `ari.conf` | ARI user `dograh` (Stasis app name + password) | `/etc/asterisk/ari.conf` |
 | `http.conf` | Enable the Asterisk HTTP server on port 8088 | `/etc/asterisk/http.conf` |
 | `extensions.conf` | Route inbound calls into `Stasis(dograh)` (vanilla Asterisk only) | merge into `/etc/asterisk/extensions.conf` |
-| `websocket_client.conf` | External media stream to `wss://ws.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
+| `websocket_client.conf` | External media stream to `wss://ws.vai.innotel.us/api/v1/telephony/ws/ari` | `/etc/asterisk/websocket_client.conf` |
 
 > **Media-socket auth (already enabled):** the media WebSocket is public
-> (``ws.innotel.us``) and authenticated per call — Dograh appends
+> (``ws.vai.innotel.us``) and authenticated per call — Dograh appends
 > ``?workflow_id=…&organization_id=…&workflow_run_id=…&token=…`` to the URL
 > dynamically via the ``v()`` transport params whenever it creates the
 > external-media channel, so the **static ``websocket_client.conf`` URI needs no
@@ -115,7 +118,7 @@ manual edits get wiped. Use the native GUI mechanism instead:
 1. Log in to Dograh at `https://vai.innotel.us`.
 2. Go to **Telephony Configurations** → **Add configuration** → **Asterisk ARI**.
 3. Fill in:
-   - **ARI Endpoint URL**: `http://192.168.1.9:8088` (internal LAN address — the PBX is not exposed publicly)
+   - **ARI Endpoint URL**: `https://ari.vai.innotel.us` (NPM proxy to the PBX's ARI service)
    - **Stasis App Name**: `dograh` (the section name in `ari.conf`)
    - **App Password**: the password you set in `ari.conf`
    - **WebSocket Client Name**: `dograh` (the section name in `websocket_client.conf`)

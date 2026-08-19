@@ -50,7 +50,32 @@
     "ssl_forced": false
   },
   {
-    "domain_names": ["ws.innotel.us"],
+    "domain_names": ["ari.vai.innotel.us"],
+    "forward_scheme": "http",
+    "forward_host": "192.168.1.9",
+    "forward_port": 8088,
+    "certificate_id": 0,
+    "meta": {
+      "letsencrypt_agree": false,
+      "dns_challenge": false,
+      "hsts": false,
+      "http2_support": true,
+      "block_exploits": true,
+      "caching_enabled": false,
+      "allow_websocket_upgrade": true
+    },
+    "advanced_config": "",
+    "locations": [],
+    "block_exploits": true,
+    "caching_enabled": false,
+    "allow_websocket_upgrade": true,
+    "http2_support": true,
+    "hsts_enabled": false,
+    "hsts_subdomains": false,
+    "ssl_forced": false
+  },
+  {
+    "domain_names": ["ws.vai.innotel.us"],
     "forward_scheme": "http",
     "forward_host": "192.168.1.63",
     "forward_port": 8000,
@@ -100,7 +125,7 @@
     "ssl_forced": false
   },
   {
-    "domain_names": ["grist.innotel.us"],
+    "domain_names": ["grist.vai.innotel.us"],
     "forward_scheme": "http",
     "forward_host": "192.168.1.63",
     "forward_port": 8484,
@@ -125,7 +150,7 @@
     "ssl_forced": false
   },
   {
-    "domain_names": ["signoz.innotel.us"],
+    "domain_names": ["signoz.vai.innotel.us"],
     "forward_scheme": "http",
     "forward_host": "192.168.1.63",
     "forward_port": 3301,

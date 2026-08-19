@@ -3,8 +3,9 @@
 This is **innotelinc/dograh**, a fork of the open-source [Dograh](https://github.com/dograh-hq/dograh)
 voice-AI platform, deployed by **Innotel** and fronted by **Nginx Proxy Manager**
 (NPM): the web UI at **https://vai.innotel.us**, and the platform API at
-**https://api.vai.innotel.us** (used by the UI, the Asterisk external-media
-WebSocket, and public transcript/recording download links).
+**https://api.vai.innotel.us** (used by the UI and public transcript/recording
+download links), the Asterisk ARI REST proxy at **https://ari.vai.innotel.us**,
+and the external-media WebSocket at **wss://ws.vai.innotel.us**.
 
 The platform is wired to Innotel's **FreePBX / Asterisk** box at
 **voice.innotel.us** through the built-in **Asterisk ARI** integration, so
@@ -19,13 +20,17 @@ existing PBX extensions can be answered by AI voice agents.
 
 ```
         Internet
-           │  https://vai.innotel.us        https://api.vai.innotel.us
+           │  https://vai.innotel.us   https://api.vai.innotel.us
+           │                            https://ari.vai.innotel.us
+           │                            wss://ws.vai.innotel.us
            ▼                               ▼
 ┌──────────────────────────────────────────────────────┐
 │             Nginx Proxy Manager (NPM)                │
 │             (proxy.innotel.us)                       │
 │  vai.innotel.us → internal nginx :80                 │
 │  api.vai.innotel.us → api container :8000 (WS on)    │
+│  ari.vai.innotel.us → PBX 192.168.1.9:8088           │
+│  ws.vai.innotel.us → api container :8000 (WS on)     │
 └─────────────┬────────────────────────────┬───────────┘
               │ http://proxy.innotel.us:80 │ http://<docker-host>:8000
               ▼                            ▼
@@ -37,7 +42,7 @@ existing PBX extensions can be answered by AI voice agents.
        ▼          ▼
    api:8000    ui:3010        minio:9000 (private), postgres, redis, coturn
        │
-       │ ARI REST (http://192.168.1.9:8088, internal LAN) + external media WebSocket
+       │ ARI REST via https://ari.vai.innotel.us + external media WebSocket via wss://ws.vai.innotel.us
        ▼
 ┌─────────────────────────────┐
 │  FreePBX / Asterisk         │   voice.innotel.us
@@ -88,7 +93,7 @@ openssl req -x509 -nodes -newkey rsa:2048 \
 
 ### Nginx Proxy Manager
 
-Create **two Proxy Hosts** on your NPM machine:
+Create **four Proxy Hosts** on your NPM machine:
 
 **1. Web UI**
 
@@ -104,7 +109,7 @@ Create **two Proxy Hosts** on your NPM machine:
 
 No custom locations are needed — the internal nginx does all the routing.
 
-**2. Platform API** (REST + the ARI external-media WebSocket)
+**2. Platform API**
 
 | Setting | Value |
 |---------|-------|
@@ -118,6 +123,35 @@ No custom locations are needed — the internal nginx does all the routing.
 
 Forwards straight to the api container's published port — the internal nginx
 is not involved on this hostname.
+
+**3. Asterisk ARI REST**
+
+| Setting | Value |
+|---------|-------|
+| Domain Names | `ari.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `192.168.1.9` |
+| Forward Port | `8088` |
+| WebSockets Support | **On** (required for ARI events) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `ari.vai.innotel.us` |
+
+Configure Dograh's ARI Endpoint URL as `https://ari.vai.innotel.us`. NPM
+forwards this host to the PBX; do not expose PBX port 8088 directly at the router.
+
+**4. Asterisk external-media WebSocket**
+
+| Setting | Value |
+|---------|-------|
+| Domain Names | `ws.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `<docker-host LAN IP>` (e.g. `192.168.1.63`) |
+| Forward Port | `8000` |
+| WebSockets Support | **On** (required) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `ws.vai.innotel.us` |
+
+Asterisk dials `wss://ws.vai.innotel.us/api/v1/telephony/ws/ari` outbound.
 
 ### Firewall
 
@@ -200,7 +234,7 @@ All secrets live in `.env` (gitignored — never commit it). Required keys:
 | `TURN_HOST` | `vai.innotel.us` |
 | `TURN_SECRET` | Random secret for TURN REST credentials |
 | `OSS_JWT_SECRET` | Random secret signing JWT auth tokens |
-| `TELEPHONY_WS_TOKEN_SECRET` | Random secret HMAC-signing each media-WebSocket URL (set — the socket is public via `ws.innotel.us`) |
+| `TELEPHONY_WS_TOKEN_SECRET` | Random secret HMAC-signing each media-WebSocket URL (set — the socket is public via `ws.vai.innotel.us`) |
 | `TELEPHONY_WS_TOKEN_ENFORCE` | `true` — media-WS connections without a valid per-call token are rejected (close `4401`) |
 | `POSTGRES_PASSWORD` | PostgreSQL password (baked into the volume on first init) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO credentials |
@@ -231,7 +265,7 @@ in [`deploy/asterisk/README.md`](deploy/asterisk/README.md). In short:
 3. Reload Asterisk modules.
 4. In Dograh (`https://vai.innotel.us/telephony-configurations`), add an
    **Asterisk ARI** configuration pointing at
-   `http://192.168.1.9:8088` (the PBX's internal LAN address), then register each extension as a phone
+   `https://ari.vai.innotel.us`, then register each extension as a phone
    number with an inbound workflow.
 
 ---

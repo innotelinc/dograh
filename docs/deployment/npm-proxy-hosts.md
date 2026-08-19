@@ -9,19 +9,28 @@ The vai-platform deployment (repo `innotelinc/dograh`, deployed at `vai.innotel.
 is fronted by **Nginx Proxy Manager (NPM)** running at `proxy.innotel.us`. NPM
 terminates TLS and forwards plain HTTP to the services on the docker host.
 
-There are **six NPM proxy hosts**. Everything else in the stack binds to
+There are **seven NPM proxy hosts**. Everything else in the stack binds to
 `127.0.0.1` and must never appear in NPM or the router.
 
 ## Proxy host summary
+
+> **WebSocket direction:** `ws.vai.innotel.us` forwards to the VAI API at
+> `192.168.1.63:8000`, not to the PBX. Asterisk is the WebSocket client and
+> dials outbound to `wss://ws.vai.innotel.us/...`.
+>
+> The PBX's ARI REST service is exposed through the separate
+> `ari.vai.innotel.us` proxy host. NPM forwards that hostname to
+> `192.168.1.9:8088`; port 8088 is not forwarded directly through the router.
 
 | Domain | Scheme | Forward host | Forward port | WebSockets |
 |---|---|---|---|---|
 | `vai.innotel.us` | http | `192.168.1.63` | **80** | On |
 | `api.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
-| `ws.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
+| `ari.vai.innotel.us` | http | `192.168.1.9` | **8088** | **On (required)** |
+| `ws.vai.innotel.us` | http | `192.168.1.63` | **8000** | **On (required)** |
 | `n8n.innotel.us` | http | `192.168.1.63` | **5678** | On |
-| `grist.innotel.us` | http | `192.168.1.63` | **8484** | On |
-| `signoz.innotel.us` | http | `192.168.1.63` | **3301** | On |
+| `grist.vai.innotel.us` | http | `192.168.1.63` | **8484** | On |
+| `signoz.vai.innotel.us` | http | `192.168.1.63` | **3301** | On |
 
 > The docker host LAN IP in this deployment is `192.168.1.63`. NPM requires an
 > IP (not a hostname) as the forward host. If the box's IP ever changes, update
@@ -29,7 +38,7 @@ There are **six NPM proxy hosts**. Everything else in the stack binds to
 
 ## Prerequisite — DNS
 
-Point A records for the `api`, `ws`, `n8n`, `grist` and `signoz` subdomains at
+Point A records for the `api`, `ari`, `ws`, `n8n`, `grist` and `signoz` subdomains at
 the NPM box's public IP. `vai.innotel.us` should already exist.
 
 ## Step-by-step
@@ -64,24 +73,40 @@ port `80`) routes `/api/v1` → api, `/` → ui, and `/voice-audio` → MinIO.
 Forwards straight to the api container's published port — the internal nginx is
 not involved on this hostname.
 
-### 3. ARI media WebSocket — `ws.innotel.us`
+### 3. Asterisk ARI REST — `ari.vai.innotel.us`
 
 | Setting | Value |
 |---|---|
-| Domain Names | `ws.innotel.us` |
+| Domain Names | `ari.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Host | `192.168.1.9` |
+| Forward Port | `8088` |
+| WebSockets Support | **On (required)** — ARI events WebSocket |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `ari.vai.innotel.us`, Force SSL |
+
+This proxy host forwards to the PBX's ARI REST and events service. Configure
+Dograh's ARI Endpoint URL as `https://ari.vai.innotel.us`; do not forward PBX
+port 8088 directly at the router.
+
+### 4. ARI media WebSocket — `ws.vai.innotel.us`
+
+| Setting | Value |
+|---|---|
+| Domain Names | `ws.vai.innotel.us` |
 | Scheme | `http` |
 | Forward Host | `192.168.1.63` |
 | Forward Port | `8000` |
 | WebSockets Support | **On (critical)** |
 | Block Common Exploits | On |
-| SSL | Let's Encrypt for `ws.innotel.us`, Force SSL |
+| SSL | Let's Encrypt for `ws.vai.innotel.us`, Force SSL |
 
-This is the `wss://ws.innotel.us/api/v1/telephony/ws/ari` endpoint Asterisk dials
+This is the `wss://ws.vai.innotel.us/api/v1/telephony/ws/ari` endpoint Asterisk dials
 into for external media streaming (`deploy/asterisk/websocket_client.conf`). The
 socket is HMAC-token authenticated per call (`TELEPHONY_WS_TOKEN_SECRET` +
 `TELEPHONY_WS_TOKEN_ENFORCE=true`).
 
-### 4. n8n — `n8n.innotel.us`
+### 5. n8n — `n8n.innotel.us`
 
 | Setting | Value |
 |---|---|
@@ -93,22 +118,22 @@ socket is HMAC-token authenticated per call (`TELEPHONY_WS_TOKEN_SECRET` +
 | Block Common Exploits | On |
 | SSL | Let's Encrypt, Force SSL |
 
-### 5. Grist — `grist.innotel.us`
+### 6. Grist — `grist.vai.innotel.us`
 
 | Setting | Value |
 |---|---|
-| Domain Names | `grist.innotel.us` |
+| Domain Names | `grist.vai.innotel.us` |
 | Scheme | `http` |
 | Forward Host | `192.168.1.63` |
 | Forward Port | `8484` |
 | WebSockets Support | On |
 | SSL | Let's Encrypt, Force SSL |
 
-### 6. SigNoz — `signoz.innotel.us`
+### 7. SigNoz — `signoz.vai.innotel.us`
 
 | Setting | Value |
 |---|---|
-| Domain Names | `signoz.innotel.us` |
+| Domain Names | `signoz.vai.innotel.us` |
 | Scheme | `http` |
 | Forward Host | `192.168.1.63` |
 | Forward Port | `3301` |
@@ -121,7 +146,7 @@ forwards to. There is no separate `3300` query-service port anymore.
 
 ## Fastest path — import the JSON
 
-The file `deploy/interview-stack/npm-proxy-hosts.json` already defines all six
+The file `deploy/interview-stack/npm-proxy-hosts.json` already defines all seven
 hosts with the correct ports and WebSockets enabled:
 
 1. NPM → **Admin → Import/Export → Import** → select the file.

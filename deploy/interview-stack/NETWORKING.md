@@ -30,19 +30,20 @@ Forward only 80/443 → NPM (Tier 1), then create proxy hosts in NPM. Each entry
 terminates TLS; NPM reaches the service on the LAN/docker network.
 
 **Ready-to-import file: `npm-proxy-hosts.json`** (NPM → Admin → Import/Export →
-Import → select the file). It defines six hosts:
+Import → select the file). It defines seven hosts:
 
 | NPM proxy host       | Target (LAN)              | Notes                             |
 |----------------------|---------------------------|-----------------------------------|
 | `vai.innotel.us`     | `http://192.168.1.63:80`  | Web UI (internal nginx → ui:3010) |
 | `api.vai.innotel.us` | `http://192.168.1.63:8000`| API — WebSockets **on**           |
-| `ws.innotel.us`      | `http://192.168.1.63:8000`| ARI media WebSocket — WS **on**   |
+| `ari.vai.innotel.us` | `http://192.168.1.9:8088` | Asterisk ARI REST + events WS     |
+| `ws.vai.innotel.us`  | `http://192.168.1.63:8000`| ARI media WebSocket — WS **on**   |
 | `n8n.innotel.us`     | `http://192.168.1.63:5678`| Workflow editor + webhook receive |
-| `grist.innotel.us`   | `http://192.168.1.63:8484`| Scores/transcripts dashboard      |
-| `signoz.innotel.us`  | `http://192.168.1.63:3301`| Traces + latency dashboards       |
+| `grist.vai.innotel.us` | `http://192.168.1.63:8484`| Scores/transcripts dashboard      |
+| `signoz.vai.innotel.us` | `http://192.168.1.63:3301`| Traces + latency dashboards       |
 
 Import steps:
-1. Point DNS for `api`, `ws`, `n8n`, `grist`, `signoz` subdomains at the NPM
+1. Point DNS for `api`, `ari`, `ws`, `n8n`, `grist`, `signoz` subdomains at the NPM
    box (the `vai.innotel.us` entry already exists — if NPM already has a host
    for it, delete that object from the file before importing to avoid a
    duplicate).
@@ -60,9 +61,9 @@ Notes:
   — the dograh Webhook node calls it over the LAN, not through NPM. If you
   prefer the public URL, set `N8N_WEBHOOK_URL=https://n8n.innotel.us/` in
   the compose and point the dograh Webhook node there.
-- `ws.innotel.us` and `api.vai.innotel.us` both forward to dograh's port 8000
+- `ws.vai.innotel.us` and `api.vai.innotel.us` both forward to dograh's port 8000
   (the API and its ARI media WebSocket `/api/v1/telephony/ws/ari` share the
-  port). The Asterisk box connects to `wss://ws.innotel.us/api/v1/telephony/ws/ari`
+  port). The Asterisk box connects to `wss://ws.vai.innotel.us/api/v1/telephony/ws/ari`
   (see `deploy/asterisk/websocket_client.conf`). This deployment sets
   `TELEPHONY_WS_TOKEN_SECRET` + `TELEPHONY_WS_TOKEN_ENFORCE=true` in the Dograh
   server's `.env`, so the public media socket is **HMAC-token authenticated**
@@ -83,7 +84,7 @@ are only reachable by dograh (host mode → `127.0.0.1`) or by other containers.
 | 8880             | kokoro-fastapi (TTS)           |
 | 8001             | speaches (STT)                 |
 | 20128            | 9Router (LLM)                  |
-| 8088 (+8089 if used) | Asterisk ARI (PBX side)    |
+| 8088 (+8089 if used) | Asterisk ARI (PBX side; NPM forwards `ari.vai.innotel.us`) |
 | 3300             | SigNoz query-service API       |
 | 4317, 4318       | SigNoz OTel ingest (gRPC/HTTP) |
 | 8888, 8889       | otel-collector metrics         |
