@@ -254,16 +254,19 @@ services:
     container_name: grist
     restart: unless-stopped
     ports:
-      - "0.0.0.0:8484:8484"   # 0.0.0.0 — n8n reaches it via host.docker.internal:8484
+      - "0.0.0.0:8484:8484"   # 0.0.0.0 — n8n reaches it via host.docker.internal:8484 + NPM proxy target
     environment:
+      # GRIST_DEFAULT_EMAIL = single-identity mode (no password): Grist attributes
+      # every request to this address, so the REST API needs no Authorization
+      # header. GRIST_IN_SERVICE skips the first-run Quick-setup/boot-key gate.
+      # (GRIST_SINGLE_USER / GRIST_DEFAULT_PASSWORD are obsolete in Grist ≥1.x.)
       GRIST_DEFAULT_EMAIL: "${GRIST_ADMIN_EMAIL:-admin@localhost}"
-      GRIST_DEFAULT_PASSWORD: "${GRIST_ADMIN_PASSWORD:-admin}"
-      GRIST_SINGLE_USER: "true"
+      GRIST_IN_SERVICE: "true"
       GRIST_SERVE_SAME_ORIGIN: "true"
     volumes:
-      - grist_data:/persistent
+      - grist_data:/persist   # Grist writes to /persist (GRIST_INST_DIR), not /persistent
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8484 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8484/ >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

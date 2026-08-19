@@ -30,7 +30,7 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432" # loopback only — api reaches postgres via the docker network
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -45,7 +45,7 @@ services:
     image: redis:7
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379" # loopback only — api/arq reach redis via the docker network
     command: >
       --requirepass ${REDIS_PASSWORD:-redissecret}
     volumes:
@@ -310,7 +310,7 @@ services:
       POSTHOG_KEY: "phc_ItizB1dP6yv7ZYobbcqrpxTdbomDA8hJFSEmAMdYvIr"
       POSTHOG_HOST: "https://us.posthog.com"
     ports:
-      - "3010:3010"
+      - "127.0.0.1:3010:3010" # loopback only — nginx reaches ui via the docker network
     depends_on:
       api:
         condition: service_healthy
