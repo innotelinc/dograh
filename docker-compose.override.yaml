@@ -26,14 +26,10 @@ services:
       # names, so map them explicitly.
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
-      # Self-hosted SigNoz OTLP endpoint. The api joins the interview-stack
-      # network (see networks below) so it can reach the collector by service
-      # name; run_pipeline's ensure_tracing() then exports every pipeline span
-      # (llm/tts/stt) to SigNoz instead of dropping them.
+      # Self-hosted SigNoz OTLP endpoint on the merged vai-platform network.
+      # run_pipeline's ensure_tracing() exports pipeline spans (llm/tts/stt)
+      # to the in-stack collector instead of dropping them.
       SIGNOZ_OTLP_ENDPOINT: "${SIGNOZ_OTLP_ENDPOINT:-http://signoz-otel-collector:4318/v1/traces}"
-    networks:
-      - app-network
-      - interview-net
 
   ui:
     build:
@@ -50,11 +46,3 @@ services:
   nginx:
     # Host port 80 comes from the base docker-compose.yaml (443 removed);
     # NPM at proxy.innotel.us forwards plain HTTP here.
-
-networks:
-  # Join the interview-stack bridge so the api can reach the SigNoz OTLP
-  # collector by service name (signoz-otel-collector:4318). The collector's
-  # host ports stay loopback-bound per the interview-stack hardening.
-  interview-net:
-    external: true
-    name: interview-stack_interview-net

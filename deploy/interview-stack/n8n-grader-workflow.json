@@ -41,7 +41,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.1.63:11434/v1/chat/completions",
+        "url": "http://host.docker.internal:11434/v1/chat/completions",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -72,7 +72,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8484/api/docs/interview/tables/Interviews/records",
+        "url": "={{ 'http://grist:8484/api/docs/' + $env.GRIST_DOC_ID + '/tables/Interviews/records' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

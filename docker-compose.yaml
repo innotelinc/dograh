@@ -37,7 +37,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 30
+      start_period: 30s
     networks:
       - app-network
 
@@ -270,6 +271,12 @@ services:
       POSTHOG_API_KEY: "phc_ItizB1dP6yv7ZYobbcqrpxTdbomDA8hJFSEmAMdYvIr"
       POSTHOG_HOST: "https://us.i.posthog.com"
 
+      # Self-hosted OpenTelemetry/SigNoz fallback for pipeline traces.
+      SIGNOZ_OTLP_ENDPOINT: "${SIGNOZ_OTLP_ENDPOINT:-http://signoz-otel-collector:4318/v1/traces}"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-vai-api}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://signoz-otel-collector:4318}"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}"
+
     ports:
       - "8000:8000"
     depends_on:
@@ -288,7 +295,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 300s
     networks:
       - app-network
 
@@ -326,6 +333,258 @@ services:
       start_period: 30s
     networks:
       - app-network
+
+  # ── Interview media services ──────────────────────────────────────────────
+  # These services are part of the same vai-platform project. The API remains
+  # the single Dograh instance; local STT/TTS and scoring services use app-network.
+  kokoro:
+    image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}
+    container_name: kokoro-fastapi
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8880:8880"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 300s
+    networks: [app-network]
+
+  speaches:
+    image: ${SPEACHES_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
+    container_name: speaches
+    restart: unless-stopped
+    environment:
+      WHISPER__INFERENCE_DEVICE: "${SPEACHES_WHISPER_DEVICE:-cpu}"
+      WHISPER__COMPUTE_TYPE: "${SPEACHES_WHISPER_COMPUTE_TYPE:-int8}"
+      UVICORN_HOST: "0.0.0.0"
+      UVICORN_PORT: "8000"
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - speaches_models:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    networks: [app-network]
+
+  # ── Interview workflow + grading ─────────────────────────────────────────
+  n8n:
+    build:
+      context: ./deploy/interview-stack
+      dockerfile: n8n.Dockerfile
+    image: innotel-n8n-otel:local
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:5678:5678"
+    environment:
+      N8N_HOST: "${N8N_HOST:-n8n.vai.innotel.us}"
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: "${N8N_EDITOR_BASE_URL:-https://n8n.vai.innotel.us/}"
+      WEBHOOK_URL: "${N8N_WEBHOOK_URL:-https://n8n.vai.innotel.us/}"
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      GENERIC_TIMEZONE: "${N8N_TIMEZONE:-UTC}"
+      N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET:-change-me-in-env}"
+      OWNER_EMAIL: "${N8N_OWNER_EMAIL:-admin@localhost}"
+      OWNER_PASSWORD: "${N8N_OWNER_PASSWORD:-admin123}"
+      OWNER_FIRST_NAME: "Interview"
+      OWNER_LAST_NAME: "Admin"
+      OTEL_SERVICE_NAME: "n8n"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector:4318/v1/traces"
+      # Created by the Grist bootstrap step; override in .env for another doc.
+      GRIST_DOC_ID: "${GRIST_DOC_ID:-new~kcsms7E9nU5Mg43rWKjNsX}"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./deploy/interview-stack/n8n-grader-workflow.json:/workflows/n8n-grader-workflow.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks: [app-network]
+
+  n8n-import:
+    image: innotel-n8n-otel:local
+    container_name: n8n_import
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        n8n import:workflow --input=/workflows/n8n-grader-workflow.json &&
+        n8n publish:workflow --id=interview-grader-workflow &&
+        n8n update:workflow --id=interview-grader-workflow --active=true || true
+    depends_on:
+      n8n:
+        condition: service_healthy
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./deploy/interview-stack/n8n-grader-workflow.json:/workflows/n8n-grader-workflow.json:ro
+    networks: [app-network]
+
+  grist:
+    image: gristlabs/grist:latest
+    container_name: grist
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8484:8484"
+    environment:
+      GRIST_DEFAULT_EMAIL: "${GRIST_ADMIN_EMAIL:-admin@localhost}"
+      GRIST_IN_SERVICE: "true"
+      GRIST_SERVE_SAME_ORIGIN: "true"
+    volumes:
+      - grist_data:/persist
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8484/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [app-network]
+
+  # ── SigNoz + OpenTelemetry ───────────────────────────────────────────────
+  signoz-metastore-postgres:
+    image: postgres:16
+    container_name: signoz-metastore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: signoz
+      POSTGRES_USER: signoz
+      POSTGRES_PASSWORD: "${SIGNOZ_POSTGRES_PASSWORD:-signoz}"
+    volumes:
+      - signoz_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signoz -d signoz"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [app-network]
+
+  signoz-clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:25.12.5
+    container_name: signoz-clickhouse-keeper
+    restart: unless-stopped
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper.yaml"]
+    volumes:
+      - keeper_data:/var/lib/clickhouse-keeper
+      - ./deploy/interview-stack/clickhouse-keeper.yaml:/etc/clickhouse-keeper/keeper.yaml:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-keeper-client", "-h", "localhost", "-p", "9181", "-q", "ls"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [app-network]
+
+  signoz-clickhouse:
+    image: clickhouse/clickhouse-server:25.12.5
+    container_name: signoz-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+      CLICKHOUSE_CONFIG: /etc/clickhouse-server/config.yaml
+    ports:
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./deploy/interview-stack/clickhouse-config.yaml:/etc/clickhouse-server/config.yaml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    depends_on:
+      signoz-clickhouse-keeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [app-network]
+
+  signoz-schema-migrator:
+    image: signoz/signoz-otel-collector:latest
+    container_name: signoz-schema-migrator
+    restart: on-failure
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          /signoz-otel-collector migrate ready &&
+          /signoz-otel-collector migrate bootstrap &&
+          /signoz-otel-collector migrate sync up &&
+          /signoz-otel-collector migrate async up && exit 0;
+          echo "SigNoz schema migration attempt $${attempt} failed; retrying";
+          sleep 15;
+        done;
+        exit 1
+    environment:
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN: "tcp://signoz-clickhouse:9000"
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+      signoz-clickhouse-keeper:
+        condition: service_healthy
+    networks: [app-network]
+
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:latest
+    container_name: signoz-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8889:8889"
+    volumes:
+      - ./deploy/interview-stack/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+    networks: [app-network]
+
+  signoz:
+    image: signoz/signoz:latest
+    container_name: signoz
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3301:8080"
+    environment:
+      SIGNOZ_SQLSTORE_PROVIDER: "postgres"
+      SIGNOZ_SQLSTORE_POSTGRES_DSN: "postgres://signoz:${SIGNOZ_POSTGRES_PASSWORD:-signoz}@signoz-metastore-postgres:5432/signoz?sslmode=disable"
+      SIGNOZ_TELEMETRYSTORE_PROVIDER: "clickhouse"
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: "tcp://signoz-clickhouse:9000"
+      SIGNOZ_TOKENIZER_JWT_SECRET: "${SIGNOZ_JWT_SECRET:-0df51a148293dcf934bdf22c2c1a1be797732f98a977ecb2e7b4e851826cc67b}"
+    volumes:
+      - signoz_data:/var/lib/signoz
+    depends_on:
+      signoz-metastore-postgres:
+        condition: service_healthy
+      signoz-clickhouse:
+        condition: service_healthy
+      signoz-schema-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [app-network]
 
   # Cloudflare tunnel for inbound webhook / WSS reachability when the host has no
   # usable public IP (behind NAT or a firewall). Gated behind the "tunnel" profile
@@ -368,6 +627,13 @@ volumes:
     driver: local
   coturn-generated:
     driver: local
+  speaches_models:
+  n8n_data:
+  grist_data:
+  clickhouse_data:
+  keeper_data:
+  signoz_postgres_data:
+  signoz_data:
 
 networks:
   app-network:

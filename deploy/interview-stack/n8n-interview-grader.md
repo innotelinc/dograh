@@ -59,7 +59,7 @@ dograh Webhook node ──POST──▶ n8n Webhook trigger
 
 ## Node 3 — HTTP Request: grade via Ollama (llama3.2)
 
-- Method `POST`, URL `http://192.168.1.63:11434/v1/chat/completions`
+- Method `POST`, URL `http://host.docker.internal:11434/v1/chat/completions`
   (host-installed Ollama, model `llama3.2`; reachable from the n8n container).
 - Headers: `Content-Type: application/json`.
 - **Must set `specifyBody: "json"`** on the node, or n8n ignores `jsonBody`
@@ -109,10 +109,9 @@ return [{
 
 ## Node 4 — HTTP Request: save to Grist
 
-- Method `POST`, URL `http://host.docker.internal:8484/api/docs/<DOC_ID>/tables/Interviews/records`.
-  (`host.docker.internal` → the host's published Grist port; works whether
-  Grist is a container or a host process. `specifyBody: "json"` required here
-  too.)
+- Method `POST`, URL `http://grist:8484/api/docs/<DOC_ID>/tables/Interviews/records`.
+  (`grist` is the merged vai-platform Compose service. `specifyBody: "json"`
+  is required here too.)
 - Auth: Basic (GRIST_DEFAULT_EMAIL / GRIST_DEFAULT_PASSWORD from the compose).
 - Body:
 
