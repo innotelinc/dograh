@@ -206,7 +206,12 @@ services:
 
   # ── Workflow automation: n8n (Community Edition) ──────────────────────────
   n8n:
-    image: n8nio/n8n:latest
+    # Custom image: adds OpenTelemetry auto-instrumentation (see n8n.Dockerfile)
+    # so the grading workflow's LLM call exports spans to SigNoz.
+    build:
+      context: .
+      dockerfile: n8n.Dockerfile
+    image: innotel-n8n-otel:local
     container_name: n8n
     restart: unless-stopped
     ports:
@@ -225,6 +230,9 @@ services:
       OWNER_PASSWORD: "${N8N_OWNER_PASSWORD:-admin123}"
       OWNER_FIRST_NAME: "Interview"
       OWNER_LAST_NAME: "Admin"
+      # OpenTelemetry → SigNoz (bootstrap in n8n.Dockerfile reads these)
+      OTEL_SERVICE_NAME: "n8n"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector:4318/v1/traces"
     volumes:
       - n8n_data:/home/node/.n8n
     # Lets n8n call host-mode dograh (8000) and a host-run 9Router (20128).

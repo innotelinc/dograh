@@ -81,6 +81,40 @@ LLM path needs no code change — the factory already forwards `base_url` to
 > Note: `validate_user_configured_service_url` allows localhost URLs because
 > `DEPLOYMENT_MODE` defaults to `oss`. The compose sets it explicitly.
 
+## Local LLM: Ollama (host-installed, llama3.2)
+
+The LLM runs as a **host process** (not a container) so it doesn't need the
+~3 GB Ollama docker image on the already-tight 32 GB root disk — just the
+binary (~1.4 GB) plus the model. Install once:
+
+```bash
+apt-get install -y zstd                       # the ollama installer needs zstd
+curl -fsSL https://ollama.com/install.sh | sh # binary + ollama.service (systemd)
+mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment=OLLAMA_HOST=0.0.0.0\n' \
+  > /etc/systemd/system/ollama.service.d/override.conf  # reachable from docker
+systemctl daemon-reload && systemctl restart ollama
+ollama pull llama3.2                          # ~2 GB, CPU-only
+```
+
+Ollama serves an OpenAI-compatible API at `http://192.168.1.63:11434/v1`
+(bound to all interfaces so the api and n8n containers can reach it; the host
+firewall should still block 11434 from outside the LAN). Point dograh's LLM
+at it in the UI:
+
+| Setting  | Value |
+|----------|-------|
+| provider | OpenAI |
+| model    | `llama3.2` |
+| base_url | `http://192.168.1.63:11434/v1` |
+| api_key  | anything (local, unauthenticated) |
+
+n8n's grading node uses the same base URL with `model: llama3.2`.
+
+> CPU-only: no GPU on this box, so llama3.2 (3B) runs on CPU — fine for the
+> post-call grading step, slow for real-time agent turns. To move to a GPU box
+> later, point `base_url` at that host's 11434 instead.
+
 ## Observability wiring (SigNoz)
 
 **Already wired — no code change needed.** `api/services/pipecat/tracing_config.py`
