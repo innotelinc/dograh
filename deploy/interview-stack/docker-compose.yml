@@ -1,3 +1,21 @@
+# ⚠ SUPERSEDED — DO NOT RUN THIS FILE ⚠
+#
+# This standalone stack has been merged into the root `docker-compose.yaml`
+# (commit "wire interview scoring stack into vai-platform"). Running this file
+# separately would collide with the live stack: every service here uses the same
+# container_name (minio, grist, n8n, signoz, ...) and the same host ports
+# (5432/6379/9000/9001/8880/8001/5678/8484/3301/4317/4318/8123/19000) that the
+# merged root compose already publishes.
+#
+# Start EVERYTHING (vai platform + interview stack) with one command from the
+# repo root:
+#     docker compose up -d
+#
+# The files in this directory that remain active are: clickhouse-config.yaml,
+# clickhouse-keeper.yaml, otel-collector-config.yaml (mounted by the root
+# compose), n8n.Dockerfile (builds the innotel-n8n-otel image), and
+# n8n-grader-workflow.json (imported by the root compose's n8n-import service).
+#
 # ─────────────────────────────────────────────────────────────────────────────
 #  Self-hosted AI Mock-Interview Stack — Dograh + local TTS/LLM + n8n + Grist
 #  + SigNoz observability.
