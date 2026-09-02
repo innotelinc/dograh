@@ -1,0 +1,48 @@
+# Auto-generated for the innotelinc/dograh deployment (vai.innotel.us).
+#
+# This deployment is fronted by Nginx Proxy Manager (NPM) at proxy.innotel.us.
+# NPM terminates TLS for vai.innotel.us and forwards plain HTTP to this
+# server's internal nginx on port 80, so:
+#   - the internal nginx only listens on port 80 (HTTP); the https/443
+#     binding is removed from the base compose (NPM owns TLS);
+#   - cloudflared is gated behind upstream's own `tunnel` profile, which this
+#     deployment never enables.
+#
+# It also:
+#   - builds the api and ui images from this repo's source (fork mode);
+#   - maps this deployment's MinIO credential names (.env: MINIO_ACCESS_KEY /
+#     MINIO_SECRET_KEY) onto upstream's expected MINIO_ROOT_USER /
+#     MINIO_ROOT_PASSWORD variables.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: dograh-local/dograh-api:local
+    pull_policy: never
+    environment:
+      # Upstream reads these from .env's MINIO_ROOT_USER / MINIO_ROOT_PASSWORD;
+      # this deployment keeps the older MINIO_ACCESS_KEY / MINIO_SECRET_KEY
+      # names, so map them explicitly.
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+      # Self-hosted SigNoz OTLP endpoint on the merged vai-platform network.
+      # run_pipeline's ensure_tracing() exports pipeline spans (llm/tts/stt)
+      # to the in-stack collector instead of dropping them.
+      SIGNOZ_OTLP_ENDPOINT: "${SIGNOZ_OTLP_ENDPOINT:-http://signoz-otel-collector:4318/v1/traces}"
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    image: dograh-local/dograh-ui:local
+    pull_policy: never
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
+
+  nginx:
+    # Host port 80 comes from the base docker-compose.yaml (443 removed);
+    # NPM at proxy.innotel.us forwards plain HTTP here.

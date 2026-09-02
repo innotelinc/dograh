@@ -11,6 +11,7 @@ from api.constants import (
     LANGFUSE_PROJECT_ID,
     LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY,
+    SIGNOZ_OTLP_ENDPOINT,
 )
 from pipecat.utils.run_context import get_current_org_id
 from pipecat.utils.tracing.setup import setup_tracing
@@ -175,9 +176,15 @@ def ensure_tracing() -> bool:
     if _tracing_initialized:
         return True
 
-    # Build the default exporter from env-var credentials (may be None)
+    # Build the default exporter from env-var credentials (may be None). An
+    # explicit SIGNOZ_OTLP_ENDPOINT wins over Langfuse env creds: self-hosted
+    # SigNoz is the fallback receiver for spans not routed to an org-specific
+    # Langfuse project (those are still registered at runtime via
+    # register_org_langfuse_credentials and take precedence per-org).
     default_exporter = None
-    if all([LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY]):
+    if SIGNOZ_OTLP_ENDPOINT:
+        default_exporter = OTLPSpanExporter(endpoint=SIGNOZ_OTLP_ENDPOINT)
+    elif all([LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY]):
         langfuse_auth = base64.b64encode(
             f"{LANGFUSE_PUBLIC_KEY}:{LANGFUSE_SECRET_KEY}".encode()
         ).decode()

@@ -99,6 +99,22 @@ def is_local_or_cgnat_ip(ip_str: str) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_link_local or is_cgnat_ip(ip_str)
 
 
+def _parse_ice_policy_override(
+    value: Optional[str], default: NonRelayFilterPolicy
+) -> NonRelayFilterPolicy:
+    """Parse an ICE_OUTBOUND_POLICY / ICE_INBOUND_POLICY env override."""
+    if not value:
+        return default
+    try:
+        return NonRelayFilterPolicy(value.strip().lower())
+    except ValueError:
+        logger.warning(
+            f"Invalid ICE policy '{value}' (expected one of "
+            f"{[p.value for p in NonRelayFilterPolicy]}); using '{default.value}'"
+        )
+        return default
+
+
 def resolve_ice_filter_policies(
     environment: str,
     force_turn_relay: bool,
@@ -133,14 +149,28 @@ def resolve_ice_filter_policies(
             )
         else:
             inbound_policy = NonRelayFilterPolicy.PRIVATE
-        return outbound_policy, inbound_policy
+    elif environment == Environment.LOCAL.value or private_lan_deployment:
+        outbound_policy = NonRelayFilterPolicy.NONE
+        inbound_policy = NonRelayFilterPolicy.NONE
+    else:
+        # Public remote deployment: drop private-IP host candidates to avoid
+        # coturn denied-peer-ip errors against Docker bridge and LAN interfaces.
+        outbound_policy = NonRelayFilterPolicy.PRIVATE
+        inbound_policy = NonRelayFilterPolicy.PRIVATE
 
-    if environment == Environment.LOCAL.value or private_lan_deployment:
-        return NonRelayFilterPolicy.NONE, NonRelayFilterPolicy.NONE
+    # Explicit operator overrides. Useful when the deployment is public but
+    # clients test from the same LAN behind the same NAT (hairpin NAT may be
+    # unreliable): ICE_INBOUND_POLICY=none lets the server connect directly to
+    # a same-subnet client's private host candidate instead of relying on the
+    # public hairpin or TURN relay path.
+    outbound_policy = _parse_ice_policy_override(
+        os.getenv("ICE_OUTBOUND_POLICY"), outbound_policy
+    )
+    inbound_policy = _parse_ice_policy_override(
+        os.getenv("ICE_INBOUND_POLICY"), inbound_policy
+    )
 
-    # Public remote deployment: drop private-IP host candidates to avoid
-    # coturn denied-peer-ip errors against Docker bridge and LAN interfaces.
-    return NonRelayFilterPolicy.PRIVATE, NonRelayFilterPolicy.PRIVATE
+    return outbound_policy, inbound_policy
 
 
 ICE_OUTBOUND_POLICY, ICE_INBOUND_POLICY = resolve_ice_filter_policies(

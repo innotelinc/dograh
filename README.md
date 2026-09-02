@@ -1,225 +1,298 @@
-# Dograh AI
+# Dograh — Innotel Deployment (vai.innotel.us)
 
-<p align="center">
-  <a href="https://www.producthunt.com/products/dograh">
-    <img src="https://img.shields.io/badge/Product%20Hunt-%231%20Product%20of%20the%20Day-DA552F?style=for-the-badge&logo=producthunt&logoColor=white" alt="Dograh: #1 Product of the Day on Product Hunt">
-  </a>
-</p>
+This is **innotelinc/dograh**, a fork of the open-source [Dograh](https://github.com/dograh-hq/dograh)
+voice-AI platform, deployed by **Innotel** and fronted by **Nginx Proxy Manager**
+(NPM): the web UI at **https://vai.innotel.us**, and the platform API at
+**https://api.vai.innotel.us** (used by the UI and public transcript/recording
+download links), the Asterisk ARI REST proxy at **https://ari.voice.innotel.us**,
+and the external-media WebSocket at **wss://ws.vai.innotel.us**.
 
-**The open-source, self-hostable alternative to Vapi & Retell** — build production voice agents with a visual workflow builder, test them in minutes, and let AI coding assistants help design and edit them through MCP.
+The platform is wired to Innotel's **FreePBX / Asterisk** box at
+**voice.innotel.us** through the built-in **Asterisk ARI** integration, so
+existing PBX extensions can be answered by AI voice agents.
 
-<p align="center">
-  <a href="https://app.dograh.com">
-    <img src="https://img.shields.io/badge/▶_Try_the_Cloud-app.dograh.com-2563eb?style=for-the-badge" alt="Try the Cloud">
-  </a>
-  &nbsp;
-  <a href="#-get-started">
-    <img src="https://img.shields.io/badge/⚡_Self--host_in_60s-One_command-111827?style=for-the-badge" alt="Self-host in 60s">
-  </a>
-  &nbsp;
-  <a href="https://join.slack.com/t/dograh-community/shared_invite/zt-4787daqcn-3TDiQUh~3xrr3pwAqR9wpQ">
-    <img src="https://img.shields.io/badge/💬_Join_Slack-Community-4A154B?style=for-the-badge&logo=slack" alt="Join Slack">
-  </a>
-</p>
+> Upstream project: [dograh-hq/dograh](https://github.com/dograh-hq/dograh) ·
+> Docs: [docs.dograh.com](https://docs.dograh.com) · License: BSD 2-Clause
 
-<p align="center">
-  <a href="https://docs.dograh.com">📖 Docs</a> &nbsp;·&nbsp;
-  <a href="LICENSE">📜 BSD 2-Clause</a> &nbsp;·&nbsp;
-  <a href="README.zh-CN.md">🌐 中文</a> &nbsp;·&nbsp;
-  <a href="README.ja-JP.md">🌐 日本語</a>
-</p>
+---
 
-<p align="center">
-  <img src="docs/images/hero.gif" alt="Dograh in action — build a workflow, launch a voice agent, talk to it" width="80%">
-</p>
+## Architecture
 
-- **100% open source**, self-hostable — no vendor lock-in, unlike Vapi or Retell
-- **Full control & transparency** — every line of code is open, with flexible LLM / TTS / STT integration
-- **Maintained by YC alumni and exit founders**, committed to keeping voice AI open
-
-<p align="center">
-  <a href="https://www.producthunt.com/products/dograh?embed=true&utm_source=badge-top-post-badge&utm_medium=badge&utm_campaign=badge-dograh-3" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-badge.svg?post_id=1217382&theme=light&period=daily&t=1786607298379" alt="Dograh - #1 Product of the Day | Product Hunt" width="250" height="54"></a>
-  &nbsp;
-  <a href="https://www.producthunt.com/products/dograh?embed=true&utm_source=badge-top-post-badge&utm_medium=badge&utm_campaign=badge-dograh-3" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-badge.svg?post_id=1217382&theme=light&period=weekly&t=1786966826740" alt="Dograh - #1 Product of the Week | Product Hunt" width="250" height="54"></a>
-  <br />
-  <a href="https://www.producthunt.com/products/dograh?embed=true&utm_source=badge-top-post-badge&utm_medium=badge&utm_campaign=badge-dograh-3" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-badge.svg?post_id=1217382&theme=neutral&period=monthly&t=1788261987782" alt="Dograh - #1 Product of the Month | Product Hunt" width="250" height="54"></a>
-  &nbsp;
-  <a href="https://www.producthunt.com/products/dograh?embed=true&utm_source=badge-top-post-topic-badge&utm_medium=badge&utm_campaign=badge-dograh-3" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-topic-badge.svg?post_id=1217382&theme=neutral&period=monthly&topic_id=267&t=1788261987782" alt="Dograh - #1 Product of the Month, Developer Tools | Product Hunt" width="250" height="54"></a>
-  <br />
-  <a href="https://trendshift.io/repositories/31007" target="_blank"><img src="https://trendshift.io/api/badge/repositories/31007" alt="dograh-hq%2Fdograh | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-
-## 🎥 Featured
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=xD9JEvfCH9k">
-    <img src="https://img.youtube.com/vi/xD9JEvfCH9k/maxresdefault.jpg" alt="Dograh featured by Better Stack" width="80%" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-  </a>
-  <br>
-  <em>Featured by <strong>Better Stack</strong> — a hands-on look at Dograh</em>
-</div>
-
-<details>
-<summary>📺 Prefer a 2-minute product walkthrough? Click here.</summary>
-
-<div align="center">
-  <a href="https://youtu.be/9gPneyf9M9w">
-    <img src="docs/images/video_thumbnail_1.png" alt="Watch Dograh AI Demo Video" width="70%" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-  </a>
-</div>
-
-</details>
-
-## ⚖️ Dograh vs Vapi vs Retell
-
-An honest comparison on the axes that matter most to teams evaluating voice AI platforms.
-
-|  | **Dograh** | **Vapi** | **Retell** |
-|---|---|---|---|
-| **License** | BSD 2-Clause (open source) | Proprietary | Proprietary |
-| **Self-hostable** | ✅ Yes — one Docker command | ❌ SaaS only | ❌ SaaS only |
-| **Pricing** | Free (self-host) · usage-based (cloud) | Per-minute SaaS | Per-minute SaaS |
-| **Bring your own LLM / STT / TTS** | ✅ Any provider, or use Dograh's stack | Configurable within their integrations | Configurable within their integrations |
-| **Source-level customization** | ✅ Every line is yours to modify | ❌ Closed source | ❌ Closed source |
-| **Data residency** | Your infra, your rules | Their cloud | Their cloud |
-| **Vendor lock-in** | None | Full | Full |
-
-
-## 🚀 Get Started
-
-##### Download and setup Dograh on your Local Machine
-
-> **Note**
-> We collect anonymous usage data to improve the product. You can opt out by setting `ENABLE_TELEMETRY=false` before running the startup script.
-
-> **Note**
-> If you wish to run the platform on a remote server instead, checkout our [Documentation](https://docs.dograh.com/deployment/docker#option-2:-remote-server-deployment)
-
-```bash
-curl -o docker-compose.yaml https://raw.githubusercontent.com/dograh-hq/dograh/main/docker-compose.yaml && curl -o start_docker.sh https://raw.githubusercontent.com/dograh-hq/dograh/main/scripts/start_docker.sh && chmod +x start_docker.sh && ./start_docker.sh
+```
+        Internet
+           │  https://vai.innotel.us   https://api.vai.innotel.us
+           │                            https://ari.voice.innotel.us
+           │                            wss://ws.vai.innotel.us
+           ▼                               ▼
+┌──────────────────────────────────────────────────────┐
+│             Nginx Proxy Manager (NPM)                │
+│             (proxy.innotel.us)                       │
+│  vai.innotel.us → internal nginx :80                 │
+│  api.vai.innotel.us → api container :8000 (WS on)    │
+│  ari.voice.innotel.us → PBX 192.168.1.9:8088           │
+│  ws.vai.innotel.us → api container :8000 (WS on)     │
+└─────────────┬────────────────────────────┬───────────┘
+              │ http://proxy.innotel.us:80 │ http://<docker-host>:8000
+              ▼                            ▼
+┌─────────────────────────────┐   ┌──────────────────┐
+│  internal nginx (Docker)    │   │ api (uvicorn)     │
+│  routes /api/v1 → api,      │   │ /api/v1/* REST    │
+│  / → ui, /voice-audio→minio │   │ /ws/ari media WS  │
+└──────┬──────────┬───────────┘   └──────────────────┘
+       ▼          ▼
+   api:8000    ui:3010        minio:9000 (private), postgres, redis, coturn
+       │
+       │ ARI REST via https://ari.voice.innotel.us + external media WebSocket via wss://ws.vai.innotel.us
+       ▼
+┌─────────────────────────────┐
+│  FreePBX / Asterisk         │   voice.innotel.us
+└─────────────────────────────┘
 ```
 
-> **⚡ Prefer an AI agent to set it up for you?**
-> If you use **Claude Code** or **Codex**, install the official [Dograh setup skill](https://github.com/dograh-hq/dograh-plugins) and let your agent handle installation, configuration, and troubleshooting — it detects your OS, picks the right deploy path, runs Dograh's own setup scripts, and verifies the result.
->
-> ```text
-> # In Claude Code
-> /plugin marketplace add dograh-hq/dograh-plugins
-> /plugin install dograh@dograh
-> ```
->
-> Then start a new session and ask it to _"set up Dograh"_ (or run `/dograh-setup`). Codex is supported too — see the [plugin repo](https://github.com/dograh-hq/dograh-plugins#install).
+Key differences from the upstream remote deployment:  - **TLS is terminated by NPM**, not by the bundled nginx container. The internal
+  nginx listens on plain HTTP and is published on host port **80** only.
+- The **cloudflared** quick-tunnel is disabled (not needed behind NPM).
+- Images are **built from this fork's source** rather than pulled from a
+  registry.
 
-> **Note**
-> First startup may take 2-3 minutes to download all images. Once running, open http://localhost:3010 to create your first AI voice assistant!
-> For common issues and solutions, see 🔧 **[Troubleshooting](docs/getting-started/troubleshooting.mdx)**.
+---
 
-### 🎙️ Your First Voice Bot
+## Deployment layout (this server)
 
-1. Open [http://localhost:3010](http://localhost:3010) in your browser.
-2. Pick **Inbound** or **Outbound**, name your bot (e.g. _Lead Qualification_), and describe the use case in 5–10 words (e.g. _Screen insurance form submissions for purchase intent_).
-3. Click **Test Agent**.
-4. Use **Test Audio** to talk to your agent in the browser, or **Test Chat** to iterate faster in text. In Test Chat, you can edit or replay user turns and Dograh will regenerate the agent's replies and node transitions from that point.
+| Path | Purpose |
+|------|---------|
+| `.env` | All secrets + canonical public-host settings (**gitignored**) |
+| `docker-compose.yaml` | Base services (postgres, redis, minio, api, ui) |
+| `docker-compose.override.yaml` | Build-from-source, NPM port mapping, cloudflared disabled |
+| `deploy/templates/nginx.remote.conf.template` | HTTP-only nginx config for NPM fronting |
+| `deploy/asterisk/` | Config files for the FreePBX/Asterisk box |
+| `certs/` | Self-signed certs required by `dograh-init` validation (**gitignored**) |
 
-> 🔑 **No API keys needed.** Dograh ships with auto-generated keys and its own LLM / TTS / STT stack. Connect your own keys for LLM, TTS, STT, or Telephony (e.g. Twilio, Vonage, Telnyx) anytime.
+---
 
-> **Featured On & Community Validation:** Dograh was named **[#1 Product of the Day on Product Hunt](https://www.producthunt.com/products/dograh)**.
+## Quick start (fresh server)
 
-## Build Agents with MCP
+On the server (this repo already checked out):
 
-Dograh ships with an MCP server, so coding agents can work directly inside your Dograh workspace.
+```bash
+# 1. Initialize the pipecat submodule (required to build the api image)
+git submodule update --init --recursive
 
-Connect Codex, Claude Code, Cursor, or any MCP client to inspect existing agents, search Dograh docs, fetch node schemas, create new workflows, and save draft edits from natural language.
+# 2. Create .env with secrets (see "Environment" below)
+cp .env.example .env   # then edit secrets
 
-When asking your coding agent to build a voice agent, share a short script for
-the use case instead of only a one-line prompt. Include the agent persona, call
-flow, rules, objection handling, success criteria, and a sample conversation if
-you have one.
+# 3. Generate the self-signed certs dograh-init validates
+mkdir -p certs
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout certs/local.key -out certs/local.crt -days 365 \
+  -subj "/CN=vai.innotel.us"
 
-See the [MCP guide](https://docs.dograh.com/integrations/mcp) to connect your assistant.
+# 4. Build images and start the stack (first build takes 10-20 min)
+./remote_up.sh --build
+```
 
-## Features
+### Nginx Proxy Manager
 
-### Voice Agent Builder
+Create **four Proxy Hosts** on your NPM machine:
 
-- Visual workflow builder with start nodes, agent nodes, global instructions, tools, transitions, and end-call outcomes
-- Test Agent panel with **Test Audio** for browser voice testing and **Test Chat** for fast prompt iteration
-- QA node, knowledge bases, webhooks, embeds, and tool calling for production workflows
+**1. Web UI**
 
-### Voice & Telephony
+| Setting | Value |
+|---------|-------|
+| Domain Names | `vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `vai.innotel.us` |
+| Forward Port | `80` |
+| WebSockets Support | **On** |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `vai.innotel.us` |
 
-- Built-in telephony integrations including Twilio, Vonage, Telnyx, Plivo, Vobiz, Cloudonix, and Asterisk ARI
-- Human handoff with call transfer on supported telephony providers
-- Bring your own LLM, TTS, STT, and telephony providers; store artifacts in bundled MinIO or AWS/S3-compatible storage
+No custom locations are needed — the internal nginx does all the routing.
 
-### Developer Experience
+**2. Platform API**
 
-- One-command Docker setup for self-hosting
-- Python backend and modular provider architecture for customization
-- Python and Node SDKs for programmatic agent creation and outbound calls
+| Setting | Value |
+|---------|-------|
+| Domain Names | `api.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `<docker-host LAN IP>` (e.g. `192.168.1.63`) |
+| Forward Port | `8000` |
+| WebSockets Support | **On** (required for `/api/v1/telephony/ws/ari`) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `api.vai.innotel.us` |
 
-## Deployment Options
+Forwards straight to the api container's published port — the internal nginx
+is not involved on this hostname.
 
-### Local Development
+**3. Asterisk ARI REST**
 
-Refer [Local Setup](https://docs.dograh.com/contribution/setup)
+| Setting | Value |
+|---------|-------|
+| Domain Names | `ari.voice.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `192.168.1.9` |
+| Forward Port | `8088` |
+| WebSockets Support | **On** (required for ARI events) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `ari.voice.innotel.us` |
 
-### Self-Hosted Deployment
+Configure Dograh's ARI Endpoint URL as `https://ari.voice.innotel.us`. NPM
+forwards this host to the PBX; do not expose PBX port 8088 directly at the router.
 
-For detailed deployment instructions including remote server setup with HTTPS, see our [Docker Deployment Guide](https://docs.dograh.com/deployment/docker#option-2-remote-server-deployment).
+**4. Asterisk external-media WebSocket**
 
-### Cloud Version
+| Setting | Value |
+|---------|-------|
+| Domain Names | `ws.vai.innotel.us` |
+| Scheme | `http` |
+| Forward Hostname / IP | `<docker-host LAN IP>` (e.g. `192.168.1.63`) |
+| Forward Port | `8000` |
+| WebSockets Support | **On** (required) |
+| Block Common Exploits | On |
+| SSL | Let's Encrypt for `ws.vai.innotel.us` |
 
-Visit [https://www.dograh.com](https://www.dograh.com/) for our managed cloud offering.
+Asterisk dials `wss://ws.vai.innotel.us/api/v1/telephony/ws/ari` outbound.
 
-## 📚Documentation
+### Firewall
 
-You can go to [https://docs.dograh.com](https://docs.dograh.com/) for our documentation.
+Open on this server:
 
-## 📦 SDKs
+- **TCP 80** — to the NPM machine only (internal nginx).
+- **UDP/TCP 3478, 5349** and **UDP 49152–49200** — coturn (WebRTC browser
+  calls / dashboard "Web Call" testing).
 
-- **Python SDK** — [pypi.org/project/dograh-sdk](https://pypi.org/project/dograh-sdk/)
-- **Node SDK** — [npmjs.com/package/@dograh/sdk](https://www.npmjs.com/package/@dograh/sdk)
+On the Asterisk box (`voice.innotel.us`):
 
-## 🤝Community & Support
+- **TCP 8088** — to this server (`proxy.innotel.us`) only, for ARI.
 
-> 👋 **Coming from the Better Stack video?** Drop your use case in our [pinned GitHub Discussion](https://github.com/orgs/dograh-hq/discussions/291) — we read every reply and the founders personally onboard early adopters.
+---
 
-- **Slack** — the cornerstone of Dograh AI contributions. Connect with maintainers, discuss features before coding, get help with setup, and stay current on contribution sprints.
-- **GitHub Discussions** — share use cases, ask questions, swap workflow recipes.
-- **GitHub Issues** — report bugs or request features.
+## In-place setup (on an existing FreePBX/Asterisk server)
 
-👉 Join us → [Dograh Community Slack](https://join.slack.com/t/dograh-community/shared_invite/zt-4787daqcn-3TDiQUh~3xrr3pwAqR9wpQ)
+Already run FreePBX/Asterisk on a server and want Dograh on the same box?
+`scripts/setup_inplace.sh` installs the Dograh stack **on top of your PBX** — it
+wires the Asterisk side (ARI user, HTTP/ARI server, external-media websocket,
+Stasis dialplan entry) and builds/starts the Docker stack:
 
-## 🙌 Contributing
+```bash
+sudo ./scripts/setup_inplace.sh              # build from source + start (first build 10-20 min)
+sudo ./scripts/setup_inplace.sh --no-build   # pull prebuilt images instead
+sudo ./scripts/setup_inplace.sh --preflight-only   # validate only, no changes
+```
 
-We love contributions! Dograh AI is 100% open source and we intend to keep it that way.
+What it does:
 
-### Getting Started
+1. Detects FreePBX vs. vanilla Asterisk and checks the required modules
+   (`res_ari`, `chan_websocket`, `res_websocket_client`).
+2. Backs up and wires `/etc/asterisk`: adds the `dograh` ARI user to
+   `ari.conf`, enables the HTTP/ARI server on 8088 in `http.conf`, writes
+   `websocket_client.conf` for external media, and adds the `Stasis(dograh)`
+   dialplan entry (`extensions_custom.conf` on FreePBX, `extensions.conf` on
+   vanilla), then reloads Asterisk.
+3. Creates `.env` with fresh secrets (never overwrites an existing `.env`),
+   generates self-signed certs, and (in build mode) a
+   `docker-compose.override.yaml`.
+4. Builds and starts the stack, waits for the API, and prints the telephony
+   values to enter in the dashboard (ARI endpoint, app name, password) plus
+   the one-time FreePBX GUI steps for the inbound route.
 
-- Fork the repository
-- Create your feature branch (git checkout -b feature/AmazingFeature)
-- Commit your changes (git commit -m 'Add some AmazingFeature')
-- Push to the branch (git push origin feature/AmazingFeature)
-- Open a Pull Request
+Your existing PBX extensions and routes are untouched beyond the added dograh
+ARI user and Stasis entry. Skip the Asterisk changes with `--skip-asterisk`.
+For an existing Dograh install that just needs rebuilding/restarting, use
+`./remote_up.sh` instead.
 
-## ⭐ Star History
+## Auto-start on boot (systemd)
 
-<img src="docs/images/star-history.png" alt="Dograh star history" width="80%">
+`deploy/systemd/dograh-stack.service` starts the stack (with the `remote`
+profile, so nginx + coturn come up too) after a reboot:
 
-## 📄 License
+```bash
+sudo cp deploy/systemd/dograh-stack.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable dograh-stack.service
+```
 
-Dograh AI is licensed under the [BSD 2-Clause License](LICENSE)- the same license as projects that were used in building Dograh AI, ensuring compatibility and freedom to use, modify, and distribute.
+The unit waits for the Docker socket, runs `docker compose --profile remote
+up -d`, and retries on failure. Private-IP installs that need the Cloudflare
+tunnel should add `--profile tunnel` to `ExecStart`. To stop the stack:
+`sudo systemctl stop dograh-stack.service` (this also runs on shutdown).
 
-## 🏢 About
+---
 
-Built with ❤️ by **Dograh** (Zansat Technologies Private Limited)
-Founded by YC alumni and exit founders committed to keeping voice AI open and accessible to everyone.
+## Environment (`.env`)
 
-<br><br><br>
+All secrets live in `.env` (gitignored — never commit it). Required keys:
 
-  <p align="center">
-    <a href="https://github.com/dograh-hq/dograh">⭐ Star us on GitHub</a> |
-    <a href="https://app.dograh.com">☁️ Try Cloud Version</a> |
-    <a href="https://join.slack.com/t/dograh-community/shared_invite/zt-4787daqcn-3TDiQUh~3xrr3pwAqR9wpQ">💬 Join Slack</a>
-  </p>
+| Key | Purpose |
+|-----|---------|
+| `ENVIRONMENT` | `production` |
+| `SERVER_IP` | Public IPv4 of the Docker host — set in the gitignored `.env` only (real IP never committed) |
+| `PUBLIC_HOST` | `vai.innotel.us` |
+| `PUBLIC_BASE_URL` | `https://vai.innotel.us` (UI origin) |
+| `BACKEND_API_ENDPOINT` | `https://api.vai.innotel.us` (API origin — media WS, download links) |
+| `MINIO_PUBLIC_ENDPOINT` | `https://vai.innotel.us` (served via internal nginx `/voice-audio`) |
+| `TURN_HOST` | `vai.innotel.us` |
+| `TURN_SECRET` | Random secret for TURN REST credentials |
+| `OSS_JWT_SECRET` | Random secret signing JWT auth tokens |
+| `TELEPHONY_WS_TOKEN_SECRET` | Random secret HMAC-signing each media-WebSocket URL (set — the socket is public via `ws.vai.innotel.us`) |
+| `TELEPHONY_WS_TOKEN_ENFORCE` | `true` — media-WS connections without a valid per-call token are rejected (close `4401`) |
+| `POSTGRES_PASSWORD` | PostgreSQL password (baked into the volume on first init) |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO credentials |
+| `REDIS_PASSWORD` | Redis password |
+| `FASTAPI_WORKERS` | uvicorn worker count (4 on this server) |
+| `ENABLE_TELEMETRY` | `false` for this deployment |
+| `ICE_INBOUND_POLICY` | `none` here — accepts private-IP ICE candidates so dashboard "Web Call" works from browsers on the same LAN/NAT as the server (hairpin NAT is unreliable on this router). Omit for pure public-internet clients. |
+
+Generate new secrets with:
+
+```bash
+openssl rand -hex 32
+```
+
+> ⚠️ `POSTGRES_PASSWORD` cannot be changed after first boot — it is baked into
+> the postgres data volume. See `docs/deployment/update.mdx` for upgrades.
+
+---
+
+## Wiring FreePBX / Asterisk (voice.innotel.us)
+
+Ready-to-use config files are in **`deploy/asterisk/`** with a full walkthrough
+in [`deploy/asterisk/README.md`](deploy/asterisk/README.md). In short:
+
+1. Copy `ari.conf`, `http.conf`, `websocket_client.conf` to `/etc/asterisk/` on
+   the PBX and merge `extensions.conf` into your dialplan.
+2. Set the ARI password in `ari.conf`.
+3. Reload Asterisk modules.
+4. In Dograh (`https://vai.innotel.us/telephony-configurations`), add an
+   **Asterisk ARI** configuration pointing at
+   `https://ari.voice.innotel.us`, then register each extension as a phone
+   number with an inbound workflow.
+
+---
+
+## Operations
+
+```bash
+# Status
+docker compose --profile remote ps
+
+# Logs
+docker compose --profile remote logs -f api
+docker compose --profile remote logs -f ui
+
+# Restart after a code change (rebuild + recreate)
+./remote_up.sh --build
+
+# Full clean rebuild
+docker compose --profile remote build --no-cache api ui
+docker compose --profile remote up -d
+```
+
+Backups: the Docker volumes `postgres_data`, `redis_data`, and `minio-data`
+hold all state. Snapshot them for disaster recovery.
+
+---
+
+## About
+
+See [ABOUT.md](ABOUT.md) for the story behind this deployment.
