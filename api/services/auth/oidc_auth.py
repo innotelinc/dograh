@@ -240,7 +240,12 @@ async def verify_id_token(id_token: str) -> dict[str, Any]:
             signing_key.key,
             algorithms=_ID_TOKEN_ALGORITHMS,
             audience=client_id(),
-            issuer=issuer_base(),
+            # Authentik can run in "global" issuer mode, where the per-app
+            # discovery document advertises the instance-wide issuer (with a
+            # trailing slash) even though AUTHENTIK_ISSUER_URL points at the
+            # per-app path. The discovery document is authoritative for what
+            # `iss` will actually contain — pin to it, not to our base URL.
+            issuer=document.get("issuer") or issuer_base(),
             options={"require": ["exp", "iat", "sub"]},
         )
     except jwt.PyJWTError as exc:
