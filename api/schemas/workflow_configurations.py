@@ -1,3 +1,4 @@
+import os
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -15,11 +16,28 @@ from api.constants import (
     TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS,
 )
 
-DEFAULT_MAX_CALL_DURATION_SECONDS = 300
-# Hard ceiling on configurable call duration. Must stay <= the concurrency
-# rate limiter's stale_call_timeout (20 min): a call running past that has
-# its slot purged as stale and the org concurrency limit under-counts.
-MAX_CALL_DURATION_SECONDS = 1200
+def _env_seconds(name: str, default: int) -> int:
+    """Read a seconds-valued setting from the environment (0 = no limit)."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(float(raw)))
+    except ValueError:
+        return default
+
+
+DEFAULT_MAX_CALL_DURATION_SECONDS = _env_seconds(
+    "DEFAULT_MAX_CALL_DURATION_SECONDS", 300
+)
+# Hard ceiling on configurable call duration. 0 removes the ceiling entirely,
+# so an operator can run calls of any length (a mock interview that must not
+# be cut off, for example) with MAX_CALL_DURATION_SECONDS=0.
+#
+# When set, it should stay <= the concurrency rate limiter's stale_call_timeout:
+# a call running past that has its slot purged as stale and the org concurrency
+# limit under-counts. Raise STALE_CALL_TIMEOUT_SECONDS alongside a long ceiling.
+MAX_CALL_DURATION_SECONDS = _env_seconds("MAX_CALL_DURATION_SECONDS", 1200)
 DEFAULT_MAX_USER_IDLE_TIMEOUT_SECONDS = 10.0
 DEFAULT_SMART_TURN_STOP_SECS = 2.0
 DEFAULT_TURN_START_STRATEGY = "default"
@@ -140,9 +158,24 @@ class WorkflowConfigurationDefaults(BaseModel):
     )
     max_call_duration: int = Field(
         default=DEFAULT_MAX_CALL_DURATION_SECONDS,
-        gt=0,
-        le=MAX_CALL_DURATION_SECONDS,
+        ge=0,
     )
+
+    @field_validator("max_call_duration")
+    @classmethod
+    def _within_call_duration_ceiling(cls, value: int) -> int:
+        """0 means no time limit; otherwise enforce the configured ceiling.
+
+        The ceiling is a deployment setting (MAX_CALL_DURATION_SECONDS), not a
+        hard-coded one, so a stack that must not cut calls off sets it to 0.
+        """
+        if MAX_CALL_DURATION_SECONDS and value > MAX_CALL_DURATION_SECONDS:
+            raise ValueError(
+                f"max_call_duration must be <= {MAX_CALL_DURATION_SECONDS} "
+                "(or 0 for no limit; raise MAX_CALL_DURATION_SECONDS to allow "
+                "longer calls)"
+            )
+        return value
     max_user_idle_timeout: float = DEFAULT_MAX_USER_IDLE_TIMEOUT_SECONDS
     smart_turn_stop_secs: float = DEFAULT_SMART_TURN_STOP_SECS
     turn_start_strategy: Literal["default", "min_words", "provisional_vad"] = (

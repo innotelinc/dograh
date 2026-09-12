@@ -615,6 +615,7 @@ async def _run_pipeline_impl(
     run_configs = run_definition.workflow_configurations or {}
 
     # Extract configurations from the version's workflow_configurations
+    # (0 = no time limit: the call ends when the graph or the caller ends it).
     max_call_duration_seconds = DEFAULT_MAX_CALL_DURATION_SECONDS
     max_user_idle_timeout = DEFAULT_MAX_USER_IDLE_TIMEOUT_SECONDS
     keyterms = None  # Dictionary words for STT boosting

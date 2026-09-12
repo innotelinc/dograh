@@ -24,6 +24,7 @@ class PipelineEngineCallbacksProcessor(FrameProcessor):
 
     def __init__(
         self,
+        # 0 = no time limit (see _check_call_duration).
         max_call_duration_seconds: int = DEFAULT_MAX_CALL_DURATION_SECONDS,
         max_duration_end_task_callback: Optional[Callable[[], Awaitable[None]]] = None,
         generation_started_callback: Optional[Callable[[], Awaitable[None]]] = None,
@@ -60,6 +61,10 @@ class PipelineEngineCallbacksProcessor(FrameProcessor):
         self._start_time = time.time()
 
     async def _check_call_duration(self):
+        # 0 (or anything below it) means "no time limit": the call ends when the
+        # graph or the caller ends it, never on a wall-clock deadline.
+        if self._max_call_duration_seconds <= 0:
+            return
         if self._start_time is not None:
             if time.time() - self._start_time > self._max_call_duration_seconds:
                 if not self._end_task_frame_pushed:
