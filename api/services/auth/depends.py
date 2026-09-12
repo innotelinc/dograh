@@ -41,9 +41,14 @@ async def get_user(
         return await _handle_api_key_auth(x_api_key)
 
     # ------------------------------------------------------------------
-    # Check if we're using local (email/password) auth
+    # Check if we're using local (email/password) auth, or OIDC
     # ------------------------------------------------------------------
-    if AUTH_PROVIDER == "local":
+    # `oidc` belongs on this branch: the sign-in callback mints the same JWT a
+    # password login would have, so request-time validation is byte for byte
+    # identical. Only the way a session *begins* differs, which is what keeps
+    # this additive — API keys, the WebSocket dependency and the UI's token
+    # handling are all unchanged.
+    if AUTH_PROVIDER in ("local", "oidc"):
         return await _handle_oss_auth(authorization)
 
     # ------------------------------------------------------------------

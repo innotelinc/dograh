@@ -87,6 +87,13 @@ class HealthResponse(BaseModel):
     # be baked into the browser bundle at build time. Both are public values.
     stack_project_id: str | None = None
     stack_publishable_client_key: str | None = None
+    # Path (not a full URL) the UI sends the browser to when starting OIDC
+    # sign-in, relative to whatever backend URL the UI resolved. Populated only
+    # when auth_provider == "oidc". A path rather than an absolute URL because
+    # the browser may reach the API on a different origin than the request that
+    # served this payload (same-origin public deployment vs LAN IP), and the UI
+    # already knows which one it is using.
+    oidc_login_path: str | None = None
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -102,6 +109,7 @@ async def health() -> HealthResponse:
         STACK_AUTH_PROJECT_ID,
         STACK_PUBLISHABLE_CLIENT_KEY,
     )
+    from api.routes.auth import OIDC_LOGIN_PATH
     from api.utils.common import get_backend_endpoints, is_local_or_private_url
 
     logger.debug("Health endpoint called")
@@ -132,6 +140,7 @@ async def health() -> HealthResponse:
         stack_publishable_client_key=(
             STACK_PUBLISHABLE_CLIENT_KEY if is_stack else None
         ),
+        oidc_login_path=OIDC_LOGIN_PATH if AUTH_PROVIDER == "oidc" else None,
     )
 
 

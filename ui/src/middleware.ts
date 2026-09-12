@@ -9,7 +9,15 @@ const OSS_TOKEN_COOKIE = 'dograh_auth_token';
 // `/embed` serves the public website widget (e.g. /embed/dograh-widget.js),
 // which must be fetchable without a session cookie so third-party sites can
 // embed it — otherwise the middleware 307-redirects the asset to /auth/login.
-const PUBLIC_PATHS = ['/auth/login', '/auth/signup', '/embed'];
+// `/auth/callback` finishes an OIDC sign-in: the user arrives from the identity
+// provider with no session cookie yet and the page's whole job is to receive the
+// one being handed to it, so guarding it would make SSO impossible.
+const PUBLIC_PATHS = [
+  '/auth/login',
+  '/auth/signup',
+  '/auth/callback',
+  '/embed',
+];
 
 let cachedAuthProvider: string | null = null;
 
@@ -45,8 +53,11 @@ async function fetchAuthProvider(): Promise<string> {
 export async function middleware(request: NextRequest) {
   const authProvider = await fetchAuthProvider();
 
-  // Only handle OSS mode
-  if (authProvider !== 'local') {
+  // Guard the modes whose session is the OSS cookie. `oidc` belongs here for the
+  // same reason it shares the provider wrapper: an Authentik sign-in ends in that
+  // same cookie, so the guard is identical. `stack` keeps its own client-side
+  // auth and must not be redirected by this middleware.
+  if (authProvider !== 'local' && authProvider !== 'oidc') {
     return NextResponse.next();
   }
 

@@ -11,10 +11,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
+export function LoginForm({
+  signupEnabled,
+  oidcLoginPath,
+}: {
+  signupEnabled: boolean;
+  oidcLoginPath: string | null;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Cerulean (Authentik) is the identity provider in this mode: there is no
+  // password form to show and no local fallback to offer, because the backend
+  // 404s the local routes entirely. The redirect is a full-page navigation, not
+  // a fetch, so it works even when the API is on another origin — which is why
+  // the path is joined with the backend URL instead of assumed same-origin.
+  if (oidcLoginPath) {
+    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    const href = `${backendBase}${oidcLoginPath}?next=${encodeURIComponent("/after-sign-in")}`;
+    return (
+      <AuthShell enterpriseSlot={<AuthEnterpriseCTA />}>
+        <div className="space-y-1.5 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <p className="text-sm text-muted-foreground">
+            Continue with your Cerulean account
+          </p>
+        </div>
+
+        <Button asChild className="w-full">
+          <a href={href}>Sign in with Cerulean</a>
+        </Button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Accounts are managed in Cerulean. Contact an administrator if you
+          cannot sign in.
+        </p>
+      </AuthShell>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

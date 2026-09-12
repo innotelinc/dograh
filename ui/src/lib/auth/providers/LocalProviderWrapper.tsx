@@ -7,7 +7,22 @@ import logger from '@/lib/logger';
 import type { AuthUser, LocalUser } from '../types';
 import { AuthContext } from './AuthProvider';
 
-export function LocalProviderWrapper({ children }: { children: React.ReactNode }) {
+/**
+ * Session provider for every mode whose session lives in the OSS cookies.
+ *
+ * That is `local` and `oidc` alike: an Authentik sign-in ends in the backend
+ * minting the same JWT a password login would, so the only thing that differs is
+ * which screen the user saw first. `providerName` exists so consumers can tell
+ * the two apart (analytics, "sign out of Authentik too") without a second,
+ * near-identical wrapper that would drift from this one.
+ */
+export function LocalProviderWrapper({
+  children,
+  providerName = 'local',
+}: {
+  children: React.ReactNode;
+  providerName?: string;
+}) {
   const [user, setUser] = useState<LocalUser | null>(null);
   const [loading, setLoading] = useState(true);
   const tokenRef = useRef<string | null>(null);
@@ -75,8 +90,8 @@ export function LocalProviderWrapper({ children }: { children: React.ReactNode }
     getAccessToken,
     redirectToLogin,
     logout,
-    provider: 'local' as const,
-  }), [user, loading, getAccessToken, redirectToLogin, logout]);
+    provider: providerName,
+  }), [user, loading, getAccessToken, redirectToLogin, logout, providerName]);
 
   return (
     <AuthContext.Provider value={contextValue}>
