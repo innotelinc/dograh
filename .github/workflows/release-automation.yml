@@ -18,5 +18,9 @@ jobs:
           # Config files location
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Use PAT to trigger deployment workflow
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # A PAT (secrets.RELEASE_PLEASE_TOKEN) is preferred so the release
+          # event can trigger the deployment workflow — GitHub ignores events
+          # initiated by the default token. The fallback keeps Release Please
+          # itself working (it hard-fails on an empty token) when no PAT is
+          # configured; image publishes can then be dispatched manually.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
