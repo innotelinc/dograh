@@ -8,12 +8,25 @@ import { LoginForm } from "./LoginForm";
 // would bake in the flag's build-environment value.
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
-  const [signupEnabled, oidcLoginPath] = await Promise.all([
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const [signupEnabled, oidcLoginPath, params] = await Promise.all([
     getSignupEnabled(),
     getOidcLoginPath(),
+    searchParams,
   ]);
+  // The backend funnels every OIDC failure back here as `?error=<slug>` (see
+  // `_failure_redirect` in api/routes/auth.py). Forwarding it is what turns a
+  // bounced sign-in into something the user can act on instead of an unchanged
+  // form that appears to do nothing.
   return (
-    <LoginForm signupEnabled={signupEnabled} oidcLoginPath={oidcLoginPath} />
+    <LoginForm
+      signupEnabled={signupEnabled}
+      oidcLoginPath={oidcLoginPath}
+      error={params?.error ?? null}
+    />
   );
 }

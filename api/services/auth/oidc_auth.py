@@ -27,7 +27,7 @@ import os
 import secrets
 import time
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import aiohttp
 import jwt
@@ -99,6 +99,65 @@ def post_login_redirect() -> str:
     return "https://dograh.capstone.innotel.us/auth/callback"
 
 
+def _registrable_parent(host: str) -> str:
+    """`.capstone.innotel.us` for `dograh.capstone.innotel.us`; "" otherwise.
+
+    A name is widened only when it has a label to drop *and* at least one label
+    left under the parent — four labels or more. Below that there is nothing
+    this can safely infer, and host-only is the answer:
+
+      * a two-label name has no parent worth having;
+      * a three-label one — `capstone.innotel.us` — has a parent that is the
+        *organisation* domain (`innotel.us`), shared with the rest of the
+        estate, so widening to it would serve the state/PKCE cookie to a dozen
+        unrelated applications. Nothing is gained either, because every name
+        this app answers on (the apex, `app.`, `dograh.`) is covered by the
+        apex, which is exactly what the provider registers as the callback when
+        the apex is the callback host. A layout that really does need a wider
+        cookie (an apex callback with sign-ins also starting on `app.`/`dograh.`
+        and no edge hand-off) sets `AUTHENTIK_COOKIE_DOMAIN` explicitly.
+
+    Returns "" for an IPv4 literal too, whose "parent" would be a meaningless
+    suffix of the address.
+    """
+    parts = (host or "").strip().strip(".").split(".")
+    if len(parts) < 4 or all(part.isdigit() for part in parts):
+        return ""
+    return "." + ".".join(parts[1:])
+
+
+def state_cookie_domain() -> str:
+    """Domain the OIDC state/PKCE cookie is served to ('' = host-only).
+
+    The state cookie is written when the browser starts a sign-in and read back
+    when Authentik returns to the provider's *registered* redirect_uri. Those
+    are only the same host by chance: the app answers on the apex and on both
+    its `app.`/`dograh.` names, while the provider registers exactly one
+    callback. A state cookie with no Domain is host-only, so a sign-in started
+    on a name the callback does not return to loses it and can only answer
+    `expired` — the "Sign-in could not be completed" an operator sees. Scoping
+    it to a parent that covers both hosts (`.capstone.innotel.us`) lets the
+    same sign-in finish on the callback host.
+
+    Both layouts are covered: with the callback on `dograh.` the derived parent
+    is `.capstone.innotel.us`, and with it on the apex the derivation returns
+    "" — host-only, which is already correct there, and deliberately not
+    `.innotel.us` (see `_registrable_parent`).
+
+    ``AUTHENTIK_COOKIE_DOMAIN`` overrides the derivation for a layout whose
+    names do not share a parent this can infer.
+    """
+    explicit = (os.environ.get("AUTHENTIK_COOKIE_DOMAIN") or "").strip()
+    if explicit:
+        return explicit if explicit.startswith(".") else "." + explicit
+    host = (
+        urlsplit(redirect_uri()).hostname
+        or urlsplit(post_login_redirect()).hostname
+        or ""
+    )
+    return _registrable_parent(host)
+
+
 def organization_provider_id() -> str:
     """The single shared organization every OIDC user is placed into.
 
@@ -126,6 +185,26 @@ def allowed_emails() -> set[str]:
     if not raw:
         return admin_emails()
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def allowed_groups() -> set[str]:
+    """Groups that admit an identity (AUTHENTIK_ALLOWED_GROUPS).
+
+    Membership is checked against the token's ``groups`` claim, which Authentik
+    fills from the 'groups' scope mapping — the request has to actually ask for
+    that scope (see ``authorization_url``) or the claim never arrives.
+    Empty = no group-based admission."""
+    raw = (os.environ.get("AUTHENTIK_ALLOWED_GROUPS") or "").strip()
+    return {g.strip() for g in raw.split(",") if g.strip()}
+
+
+def claims_groups(claims: dict[str, Any]) -> set[str]:
+    """The identity's groups from the token, tolerating the shapes providers
+    emit: a list (Authentik) or a comma-separated string."""
+    raw = claims.get("groups") or []
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    return {str(g).strip() for g in raw if str(g).strip()}
 
 
 async def discovery(force: bool = False) -> dict[str, Any]:
@@ -185,7 +264,10 @@ async def authorization_url(*, state: str, code_challenge: str) -> str:
         "response_type": "code",
         "client_id": client_id(),
         "redirect_uri": redirect_uri(),
-        "scope": "openid email profile",
+        # `groups` is what makes group-based admission possible: the provider
+        # carries the mapping, but the claim is only emitted when the client
+        # asks for the scope.
+        "scope": "openid email profile groups",
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
@@ -263,17 +345,30 @@ def claims_name(claims: dict[str, Any]) -> str:
 
 
 def is_allowed(claims: dict[str, Any]) -> bool:
-    """Admission gate — the allowlist, when one is configured.
+    """Admission gate — who may hold a Dograh session.
 
     Runs *after* token verification, so it cannot be reached without a valid
-    Authentik identity. A user who authenticates but is not on the list is
-    rejected rather than admitted, which is the behaviour you want when the
-    provider is shared with other applications.
+    Authentik identity. An identity is admitted when EITHER:
+
+      * its email is on the email allowlist (``AUTHENTIK_ALLOWED_EMAILS``,
+        falling back to the admin list so a single variable can both restrict
+        access and grant rights on a locked-down install), OR
+      * it carries any of the groups in ``AUTHENTIK_ALLOWED_GROUPS`` — the SSO
+        group gate, so admission follows IdP membership instead of a hand-maintained
+        list of addresses.
+
+    With neither configured, any authenticated identity is admitted. An identity
+    that authenticates but satisfies neither list is rejected rather than
+    admitted, which is the behaviour you want when the provider is shared with
+    other applications.
     """
-    allowed = allowed_emails()
-    if not allowed:
+    emails = allowed_emails()
+    if emails and claims_email(claims) in emails:
         return True
-    return claims_email(claims) in allowed
+    groups = allowed_groups()
+    if groups and claims_groups(claims) & groups:
+        return True
+    return not emails and not groups
 
 
 def subject(claims: dict[str, Any]) -> str:

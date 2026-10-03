@@ -130,6 +130,38 @@ def test_admin_list_falls_back_to_being_the_admission_list(monkeypatch):
     assert oidc_auth.admin_emails() == {"boss@example.com"}
 
 
+def test_group_admission_admits_members_and_refuses_others(monkeypatch):
+    """AUTHENTIK_ALLOWED_GROUPS: admission follows IdP membership instead of a
+    hand-maintained list of addresses."""
+    monkeypatch.delenv("AUTHENTIK_ALLOWED_EMAILS", raising=False)
+    monkeypatch.delenv("AUTHENTIK_ADMIN_EMAILS", raising=False)
+    monkeypatch.setenv("AUTHENTIK_ALLOWED_GROUPS", "cerulean-platform, ops")
+
+    assert oidc_auth.allowed_groups() == {"cerulean-platform", "ops"}
+    assert oidc_auth.claims_groups({"groups": ["cerulean-platform", "other"]}) == {
+        "cerulean-platform",
+        "other",
+    }
+    assert oidc_auth.is_allowed({"email": "x@example.com", "groups": ["cerulean-platform"]}) is True
+    # A comma-separated claim is tolerated alongside Authentik's list form.
+    assert oidc_auth.is_allowed({"email": "x@example.com", "groups": "ops"}) is True
+    assert oidc_auth.is_allowed({"email": "x@example.com", "groups": ["strangers"]}) is False
+    # No groups claim at all: authenticates, but not admitted.
+    assert oidc_auth.is_allowed({"email": "x@example.com"}) is False
+
+
+def test_email_allowlist_still_admits_even_when_group_gate_is_set(monkeypatch):
+    """The email list is an override: an operator outside the SSO group must
+    not lose access the day the group gate is switched on."""
+    monkeypatch.setenv("AUTHENTIK_ALLOWED_EMAILS", "boss@example.com")
+    monkeypatch.delenv("AUTHENTIK_ADMIN_EMAILS", raising=False)
+    monkeypatch.setenv("AUTHENTIK_ALLOWED_GROUPS", "cerulean-platform")
+
+    assert oidc_auth.is_allowed({"email": "boss@example.com"}) is True
+    assert oidc_auth.is_allowed({"email": "member@example.com", "groups": ["cerulean-platform"]}) is True
+    assert oidc_auth.is_allowed({"email": "x@example.com", "groups": ["other"]}) is False
+
+
 # ── route gating ────────────────────────────────────────────────────────────
 
 
@@ -177,6 +209,81 @@ def test_oidc_login_redirects_to_provider_and_stores_state(oidc_env):
     assert "client_id=dograh" in location
     assert "state=" in location
     assert response.cookies.get(oidc_auth.OIDC_STATE_COOKIE)
+
+
+def test_login_state_cookie_is_readable_at_the_callback_host(oidc_env, monkeypatch):
+    """The state cookie has to survive the hop to the provider and back.
+
+    The app answers on several names — the apex and its `app.`/`dograh.` names —
+    while the registered redirect_uri, where Authentik returns the browser, is
+    only one of them. A host-only cookie is gone by then, and the callback can
+    only answer `expired`: the sign-in never completes, and nothing in the flow
+    reports why.
+
+    The callback here is one of the app's own sub-names, so the cookie widens to
+    the parent that covers both it and the apex.
+    """
+    monkeypatch.setenv(
+        "AUTHENTIK_REDIRECT_URI",
+        "https://dograh.apps.example.test/api/v1/auth/oidc/callback",
+    )
+    client = _client()
+
+    response = client.get("/auth/oidc/login", follow_redirects=False)
+
+    assert "Domain=.apps.example.test" in response.headers["set-cookie"]
+
+
+def test_state_cookie_domain_follows_the_registered_redirect_uri(monkeypatch):
+    monkeypatch.delenv("AUTHENTIK_COOKIE_DOMAIN", raising=False)
+    monkeypatch.setenv(
+        "AUTHENTIK_REDIRECT_URI",
+        "https://dograh.capstone.innotel.us/api/v1/auth/oidc/callback",
+    )
+    monkeypatch.delenv("AUTHENTIK_COOKIE_DOMAIN", raising=False)
+
+    assert oidc_auth.state_cookie_domain() == ".capstone.innotel.us"
+
+
+def test_state_cookie_domain_stays_host_only_with_nothing_to_widen_to(monkeypatch):
+    """An address — or a bare host — must never be widened to a suffix of itself:
+    a cookie for `1.46` or for `.localhost` is not a cookie for this app."""
+    monkeypatch.delenv("AUTHENTIK_COOKIE_DOMAIN", raising=False)
+
+    for redirect in (
+        "http://192.168.1.46:8096/api/v1/auth/oidc/callback",
+        "http://localhost:3010/api/v1/auth/oidc/callback",
+    ):
+        monkeypatch.setenv("AUTHENTIK_REDIRECT_URI", redirect)
+        assert oidc_auth.state_cookie_domain() == ""
+
+
+def test_state_cookie_domain_stays_host_only_when_the_apex_is_the_callback(monkeypatch):
+    """A three-label callback host must not widen to the organisation domain.
+
+    With the apex registered as the redirect_uri the derived parent would be
+    `innotel.us` — the domain this stack shares with every other application in
+    the estate. That serves the state/PKCE cookie to all of them and buys
+    nothing, because the callback *is* the apex: host-only already reaches it.
+    """
+    monkeypatch.delenv("AUTHENTIK_COOKIE_DOMAIN", raising=False)
+    monkeypatch.setenv(
+        "AUTHENTIK_REDIRECT_URI",
+        "https://capstone.innotel.us/api/v1/auth/oidc/callback",
+    )
+
+    assert oidc_auth.state_cookie_domain() == ""
+
+
+def test_state_cookie_domain_override_wins(monkeypatch):
+    """For a layout whose names do not share a parent this can infer."""
+    monkeypatch.setenv(
+        "AUTHENTIK_REDIRECT_URI",
+        "https://dograh.capstone.innotel.us/api/v1/auth/oidc/callback",
+    )
+    monkeypatch.setenv("AUTHENTIK_COOKIE_DOMAIN", "innotel.us")
+
+    assert oidc_auth.state_cookie_domain() == ".innotel.us"
 
 
 def test_oidc_login_refuses_to_bounce_to_another_origin(oidc_env):

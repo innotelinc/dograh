@@ -212,6 +212,11 @@ async def oidc_login(next: str | None = Query(default=None)):
         httponly=True,
         secure=True,
         samesite="lax",
+        # Serve the state cookie to every name the app answers on, not just the
+        # one the sign-in started from: the callback is always the provider's
+        # registered redirect_uri (a different host), and a host-only cookie
+        # would be missing there (see oidc_auth.state_cookie_domain).
+        domain=oidc_auth.state_cookie_domain() or None,
         path="/",
     )
     return response
@@ -280,7 +285,14 @@ async def oidc_callback(
     response = RedirectResponse(
         f"{oidc_auth.post_login_redirect()}#access_token={quote(token)}&next={quote(next_path)}"
     )
-    response.delete_cookie(oidc_auth.OIDC_STATE_COOKIE, path="/")
+    # Clear it with the same Domain it was set with: a cookie written to
+    # `.capstone.innotel.us` is not removed by a host-only delete, which would
+    # leave the spent state/verifier in the browser for its full TTL.
+    response.delete_cookie(
+        oidc_auth.OIDC_STATE_COOKIE,
+        path="/",
+        domain=oidc_auth.state_cookie_domain() or None,
+    )
     return response
 
 
@@ -315,9 +327,31 @@ async def _provision_oidc_user(claims: dict) -> UserModel:
     user, was_created = await db_client.get_or_create_user_by_provider_id(provider_id)
 
     email = oidc_auth.claims_email(claims)
-    if email and user.email != email:
-        await db_client.update_user_email(user.id, email)
-        user.email = email
+    if email and (user.email or "").lower() != email.lower():
+        adopted_id, conflict = await db_client.claim_user_email(
+            user.id, provider_id, email
+        )
+        if conflict:
+            # The address belongs to another subject. Refusing the *address* is
+            # not refusing the sign-in: the row is keyed on the subject, so the
+            # person is provisioned as usual and only the display address is
+            # left as it was. Silently failing here is what made a reconcilable
+            # email clash look exactly like a broken identity provider.
+            logger.warning(
+                f"OIDC sign-in for subject {provider_id}: {email} already belongs "
+                "to another account — signing in without changing the address"
+            )
+        elif adopted_id is not None and adopted_id != user.id:
+            # A previous row for this person (no subject: a legacy or password
+            # account) now carries the subject, so it is the row to use.
+            logger.warning(
+                f"OIDC sign-in: adopted the existing account for {email} "
+                f"(id {adopted_id}) onto subject {provider_id}"
+            )
+            user = await db_client.get_user_by_id(adopted_id)
+            was_created = False
+        else:
+            user.email = email
 
     organization, _ = await db_client.get_or_create_organization_by_provider_id(
         org_provider_id=oidc_auth.organization_provider_id(), user_id=user.id

@@ -805,6 +805,31 @@ class ARIConnection:
             )
         return identity
 
+    async def _capture_zeus_envelope(self, channel_id: str) -> Optional[dict]:
+        """Read the Zeus-owned call envelope from the live ARI channel.
+
+        Dograh must not invent a second context token. If the Zeus router
+        stamped one, preserve it and the facts around it; if it did not, return
+        ``None`` so standalone Dograh keeps its normal behaviour.
+        """
+        token = await self._get_channel_var(channel_id, "AI_CONTEXT_TOKEN")
+        if not token or token in {"(null)", "unset"}:
+            return None
+        values = {}
+        for name in (
+            "AI_ACCOUNT",
+            "AI_AGENT",
+            "AI_CALLER_NUM",
+            "AI_CALLER_NAME",
+            "AI_CALL_ID",
+            "ZEUS_CAPSTONE_TARGET",
+        ):
+            value = await self._get_channel_var(channel_id, name)
+            if value and value not in {"(null)", "unset"}:
+                values[name] = value
+        values["AI_CONTEXT_TOKEN"] = token
+        return values
+
     async def _create_external_media(
         self,
         workflow_id: str,
@@ -979,6 +1004,12 @@ class ARIConnection:
             external_pbx_call = await self._capture_external_pbx_call(
                 channel_id, channel.get("name", ""), lead_fields
             )
+            # Zeus stamps the cross-product envelope on the channel before
+            # entering [dograh-inbound]. Carry the small, certain facts into
+            # the workflow's initial context so the interview can greet the
+            # caller by name and the later return can retain the same call id;
+            # the portal remains the authority for the full context read.
+            zeus_context = await self._capture_zeus_envelope(channel_id)
             workflow_run = await db_client.create_workflow_run(
                 name=f"ARI Inbound {caller_number}",
                 workflow_id=inbound_workflow_id,
@@ -992,6 +1023,8 @@ class ARIConnection:
                     "provider": "ari",
                     "telephony_configuration_id": self.telephony_configuration_id,
                     "external_pbx_call": external_pbx_call,
+                    "zeus_context": zeus_context,
+                    "candidate_name": (zeus_context or {}).get("AI_CALLER_NAME", ""),
                 },
                 gathered_context={
                     "call_id": call_id,
@@ -1205,6 +1238,34 @@ class ARIConnection:
                 ctx.get("transfer_caller_channel_id") or call_id
             )
             transfer_destination_channel_id = ctx.get("transfer_destination_channel_id")
+
+            # A Zeus return redirects the caller channel out of Dograh instead
+            # of deleting it. Its StasisEnd still arrives here, so normal
+            # teardown would delete the very channel AVA is about to answer.
+            # Read the marker from the caller (the variable is on that leg,
+            # not on the external-media leg) and clean only Dograh's resources.
+            if call_id:
+                return_outcome = await self._get_channel_var(
+                    call_id, "ZEUS_RETURN_OUTCOME"
+                )
+                if return_outcome and return_outcome not in {"(null)", "unset"}:
+                    logger.info(
+                        f"[ARI org={self.organization_id}] Zeus return in progress "
+                        f"for channel {call_id}; preserving caller during teardown"
+                    )
+                    if bridge_id:
+                        await self._delete_bridge(bridge_id)
+                    if ext_channel_id and ext_channel_id != channel_id:
+                        await self._delete_channel(ext_channel_id)
+                    keys_to_delete = [
+                        cid
+                        for cid in (call_id, ext_channel_id, channel_id)
+                        if cid
+                    ]
+                    if keys_to_delete:
+                        await self._delete_channel_run(*keys_to_delete)
+                    await self._delete_ext_channel(ext_channel_id)
+                    return
 
             # Check if this is a call transfer scenario external channel. Skip full teardown if
             # transfer is in progress and this is the external media channel
