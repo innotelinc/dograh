@@ -190,6 +190,26 @@ class UserClient(BaseDBClient):
             await session.execute(stmt)
             await session.commit()
 
+    async def set_user_superuser(self, user_id: int, is_superuser: bool) -> None:
+        """Grant or revoke superuser rights.
+
+        Needed by the OIDC sign-in path, which derives rights from the identity
+        provider's admin list on every login. `get_or_create_user_by_provider_id`
+        can only ever create a non-superuser, so without this an SSO admin would
+        have to be promoted by hand in the database and would silently lose the
+        flag the first time the provider's list was corrected.
+        """
+        async with self.async_session() as session:
+            from sqlalchemy import update
+
+            stmt = (
+                update(UserModel)
+                .where(UserModel.id == user_id)
+                .values(is_superuser=is_superuser)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
     async def get_user_by_email(self, email: str) -> UserModel | None:
         """Fetch a user by their email address (case-insensitive).
 
