@@ -75,6 +75,14 @@ async function proxyRequest(request: NextRequest) {
       headers: createRequestHeaders(request),
       body: await getRequestBody(request),
       cache: "no-store",
+      // A proxy must not resolve redirects on the client's behalf. The OIDC
+      // endpoints under /api/v1 answer 3xx by design — `/auth/oidc/login`
+      // redirects to the identity provider and `/auth/oidc/callback` back to
+      // this app — and the default `follow` makes fetch chase them, so the
+      // browser received Authentik's flow page (200, rendered on the app's own
+      // origin, where its API calls 404) instead of ever seeing the redirect.
+      // `manual` hands the 3xx and its Location straight back.
+      redirect: "manual",
     });
 
     return new Response(request.method === "HEAD" ? null : response.body, {

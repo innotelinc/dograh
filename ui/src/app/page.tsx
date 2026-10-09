@@ -13,9 +13,11 @@ export default async function Home() {
   const authProvider = await getServerAuthProvider();
   logger.debug('[HomePage] Auth provider:', authProvider);
 
-  // For local/OSS provider, check if user has workflows
-  if (authProvider === 'local') {
-    logger.debug('[HomePage] Local provider detected, checking for workflows');
+  // For local/OSS and OIDC providers, check if user has workflows. Both keep
+  // the session in the same cookie, so both need this branch — without `oidc`
+  // an Authentik user fell through to the Stack-only sign-in route below.
+  if (authProvider === 'local' || authProvider === 'oidc') {
+    logger.debug('[HomePage] Local/OIDC provider detected, checking for workflows');
 
     try {
       const accessToken = await getServerAccessToken();
@@ -91,6 +93,12 @@ export default async function Home() {
     }
   }
 
-  logger.debug('[HomePage] Redirecting unauthenticated Stack user to /handler/sign-in');
-  redirect('/handler/sign-in');
+  // Only Stack has a client-side sign-in handler; the cookie providers sign in
+  // through the UI's own login form.
+  if (authProvider === 'stack') {
+    logger.debug('[HomePage] Redirecting unauthenticated Stack user to /handler/sign-in');
+    redirect('/handler/sign-in');
+  }
+  logger.debug('[HomePage] Redirecting unauthenticated user to /auth/login');
+  redirect('/auth/login');
 }

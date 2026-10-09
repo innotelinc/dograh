@@ -4,6 +4,7 @@ This module contains the business logic for Asterisk ARI call operations.
 """
 
 import asyncio
+import os
 from typing import TYPE_CHECKING, Any, Dict
 
 from loguru import logger
@@ -213,7 +214,19 @@ class ARIHangupStrategy(HangupStrategy):
         self._external_pbx_adapter = external_pbx_adapter
 
     async def execute_hangup(self, context: Dict[str, Any]) -> bool:
-        """Hang up the Asterisk channel via ARI REST API."""
+        """Return a Zeus interview channel, or hang it up normally.
+
+        On a shared Zeus voice plane, the dialplan stamps ``AI_CONTEXT_TOKEN``
+        on the channel before entering Dograh. When the interview workflow
+        ends, redirecting that channel to ``[zeus-ai-return]`` keeps the same
+        Asterisk call id and envelope alive for AVA. Deleting the channel here
+        would end the caller before AVA could receive the interview outcome.
+
+        The feature is deliberately opt-in: standalone Dograh has no Zeus return
+        context, and a return redirect on a channel without the token would be
+        a guessed destination. ``ZEUS_RETURN_ENABLED`` is therefore the single
+        deployment switch, with the token providing the per-call guard.
+        """
         try:
             import aiohttp
             from aiohttp import BasicAuth
@@ -228,6 +241,17 @@ class ARIHangupStrategy(HangupStrategy):
                     "Cannot hang up Asterisk channel: missing channel_id or ari_endpoint"
                 )
                 return False
+
+            if self._zeus_return_enabled():
+                redirected = await self._redirect_to_zeus_return(
+                    session_factory=aiohttp.ClientSession,
+                    channel_id=channel_id,
+                    ari_endpoint=ari_endpoint,
+                    app_name=app_name,
+                    app_password=app_password,
+                )
+                if redirected:
+                    return True
 
             # The external PBX owns the real customer leg, so it should be the
             # one that ends the call: ask it to hang up, then wait for its BYE.
@@ -267,6 +291,71 @@ class ARIHangupStrategy(HangupStrategy):
         except Exception as e:
             logger.exception(f"Failed to hang up Asterisk channel: {e}")
             return False
+
+    @staticmethod
+    def _zeus_return_enabled() -> bool:
+        return os.environ.get("ZEUS_RETURN_ENABLED", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    @staticmethod
+    async def _redirect_to_zeus_return(
+        *,
+        session_factory: Any,
+        channel_id: str,
+        ari_endpoint: str,
+        app_name: str,
+        app_password: str,
+    ) -> bool:
+        """Redirect an enrolled channel to Zeus; return whether it happened.
+
+        ARI returns 204 for a successful variable write/redirect and 404 when
+        the channel ended while the workflow was closing. Neither is an error
+        for the caller: 404 means there is no channel left to return. Any other
+        response falls through to the ordinary hangup path so a failed return
+        can never strand a live interview channel.
+        """
+        import aiohttp
+
+        auth = aiohttp.BasicAuth(app_name, app_password)
+        base = f"{ari_endpoint.rstrip('/')}/ari/channels/{channel_id}"
+        async with session_factory() as session:
+            async with session.get(
+                f"{base}/variable", params={"variable": "AI_CONTEXT_TOKEN"}, auth=auth
+            ) as response:
+                if response.status == 404:
+                    return True
+                if response.status != 200:
+                    return False
+                token = (await response.json()).get("value", "") or ""
+                if not token.strip() or token.strip() in {"(null)", "unset"}:
+                    return False
+
+            async with session.post(
+                f"{base}/variable",
+                json={"variable": "ZEUS_RETURN_OUTCOME", "value": "interview_complete"},
+                auth=auth,
+            ) as response:
+                if response.status not in {200, 204}:
+                    return False
+
+            async with session.post(
+                f"{base}/redirect",
+                params={"context": "zeus-ai-return", "extension": "s", "priority": "1"},
+                auth=auth,
+            ) as response:
+                if response.status in {200, 204}:
+                    logger.info(
+                        "[ARI Hangup] Redirected Zeus interview channel "
+                        f"{channel_id} to zeus-ai-return"
+                    )
+                    return True
+                if response.status == 404:
+                    return True
+                return False
 
     async def _await_external_pbx_bye(
         self,

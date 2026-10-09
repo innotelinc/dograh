@@ -1,4 +1,5 @@
 import { StackHandler, StackTheme } from "@stackframe/stack";
+import { redirect } from "next/navigation";
 
 import { AuthEnterpriseCTA } from "@/components/auth/AuthEnterpriseCTA";
 import { AuthShell } from "@/components/auth/AuthShell";
@@ -37,6 +38,12 @@ export default async function Handler(props: unknown) {
         </div>
       </AuthShell>
     );
+  }
+
+  // OIDC signs in through the UI's own login form (the backend starts the
+  // Authentik redirect), so Stack's handler has nothing to serve here.
+  if (authProvider === "oidc") {
+    redirect("/auth/login");
   }
 
   // Lazily import the real StackServerApp only when needed

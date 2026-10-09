@@ -12,8 +12,11 @@ import { OSS_TOKEN_COOKIE, OSS_USER_COOKIE } from '@/lib/auth/cookies';
 export async function GET() {
   const authProvider = await getAuthProvider();
 
-  // Only handle OSS mode
-  if (authProvider !== 'local') {
+  // Serve the session in every mode that stores one in these cookies. `oidc`
+  // belongs here because the sign-in callback mints the same JWT a password
+  // login does — so this route, the middleware, and the provider wrapper are
+  // reused rather than duplicated for SSO.
+  if (authProvider !== 'local' && authProvider !== 'oidc') {
     return NextResponse.json({ error: 'Not in OSS mode' }, { status: 400 });
   }
 

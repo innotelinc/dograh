@@ -67,7 +67,7 @@ class CallMonitorProcessor(FrameProcessor):
         conversation_enabled: Callable[[], bool],
         response_timeout: float = 35,
         tool_timeout: float = 180,
-        max_call_duration_seconds: int = DEFAULT_MAX_CALL_DURATION_SECONDS,
+        max_call_duration_seconds: int | None = DEFAULT_MAX_CALL_DURATION_SECONDS,
         max_duration_end_task_callback: Callable[[], Awaitable[None]] | None = None,
     ):
         super().__init__()
@@ -289,7 +289,15 @@ class CallMonitorProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 
     async def _check_call_duration(self):
-        if self._start_time is None or self._end_task_frame_pushed:
+        # ``None`` is the monitor's spelling of "no limit". A workflow whose
+        # max_call_duration is 0 is translated to None before it reaches here,
+        # because a literal 0 would compare as a budget already spent and end
+        # the call on its first heartbeat.
+        if (
+            self.max_call_duration_seconds is None
+            or self._start_time is None
+            or self._end_task_frame_pushed
+        ):
             return
         if time.monotonic() - self._start_time <= self.max_call_duration_seconds:
             return

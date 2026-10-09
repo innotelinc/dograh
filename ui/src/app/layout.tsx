@@ -33,8 +33,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dograh",
-  description: "Open Source Voice Assistant Workflow Builder",
+  title: "Capstone",
+  description: "AI Voice Agent Platform",
 };
 
 export default function RootLayout({
