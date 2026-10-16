@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,7 +28,22 @@ class RateLimiter:
 
     def __init__(self):
         self.redis_client: Optional[aioredis.Redis] = None
-        self.stale_call_timeout = 1200  # 20 minutes in seconds
+        # Slots older than this are treated as leaked and purged. It has to stay
+        # >= the longest call the deployment allows (MAX_CALL_DURATION_SECONDS),
+        # otherwise a live call's slot is dropped and the org concurrency limit
+        # under-counts. Configurable so a stack with unlimited call length can
+        # set it to its longest plausible call.
+        self.stale_call_timeout = self._env_seconds("STALE_CALL_TIMEOUT_SECONDS", 1200)
+
+    @staticmethod
+    def _env_seconds(name: str, default: int) -> int:
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            return max(1, int(float(raw)))
+        except ValueError:
+            return default
 
     async def _get_redis(self) -> aioredis.Redis:
         """Get or create Redis connection"""

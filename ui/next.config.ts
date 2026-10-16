@@ -3,9 +3,32 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // webpack's persistent cache holds one *in-memory* generation of every module
+  // for as long as the build runs (Next sets `maxMemoryGenerations: Infinity`
+  // for production, so nothing is ever evicted), and on a build host with a hard
+  // memory cap that pass is what walks the build into it: on the 4 GiB
+  // `development` container the peak sat at 4.4 GiB and the cgroup OOM-killed
+  // `next build` right after "Creating an optimized production build". Turning
+  // the cache off is what brings it under the cap.
+  //
+  // Opt-in, not the default: the cache is what makes a *repeat* build fast, and
+  // an image build gets nothing from a cache that dies with its layer. The
+  // Dockerfile sets NEXT_BUILD_FS_CACHE=0 for exactly that case; local builds
+  // keep Next's default.
+  webpack: (config, { dev }) => {
+    if (!dev && process.env.NEXT_BUILD_FS_CACHE === '0') {
+      config.cache = false;
+    }
+    return config;
+  },
   output: 'standalone',
   experimental: {
     serverSourceMaps: true,
+    // One static-generation worker instead of one per core. The default spawns
+    // a Node process per CPU, and on this box that peak (workers + webpack +
+    // the type-check child) is what got the build OOM-killed; the extra
+    // parallelism only shaves a little wall-clock time.
+    cpus: Number(process.env.NEXT_BUILD_CPUS ?? 1),
   },
   async rewrites() {
     return [
@@ -25,6 +48,15 @@ const nextConfig: NextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
+
+  // Next runs its type-check inside `next build`, at the same time webpack is
+  // still holding the module graph — on a memory-constrained host that combined
+  // peak is what gets the build OOM-killed. The image build runs
+  // `tsc --noEmit` on its own line first (same check, sequential peaks) and sets
+  // this flag to stop Next repeating it. Dev/CI builds are unaffected.
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === '1',
+  },
 };
 
 export default withSentryConfig(nextConfig, {

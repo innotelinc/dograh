@@ -12,6 +12,13 @@ max-port=49200
 # Network - external IP / host for NAT traversal
 external-ip=__DOGRAH_TURN_EXTERNAL_IP__
 
+# TLS/DTLS certificate (mounted from ./certs). The image's default
+# /etc/coturn certs are shadowed by the rendered-config volume, so without
+# these directives the 5349 listeners never start. Browsers do not
+# certificate-validate TURN-over-TLS, so the self-signed pair is fine.
+cert=/etc/ssl/coturn/local.crt
+pkey=/etc/ssl/coturn/local.key
+
 # Realm
 realm=dograh.com
 

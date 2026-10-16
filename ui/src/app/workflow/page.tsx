@@ -21,17 +21,15 @@ async function WorkflowList() {
     const accessToken = await getServerAccessToken();
 
     if (!accessToken) {
-        // If no token, user needs to sign in
+        // If no token, user needs to sign in. `oidc` belongs with `local` here:
+        // both hold their session in the OSS cookie and both sign in through
+        // /auth/login, so an incomplete session should be bounced to the form
+        // rather than rendering a dead-end error the user cannot act on.
         const { redirect } = await import('next/navigation');
         if (authProvider === 'stack') {
             redirect('/');
         } else {
-            // For OSS mode, this shouldn't happen as token is auto-generated
-            return (
-                <div className="text-red-500">
-                    Authentication required. Please refresh the page.
-                </div>
-            );
+            redirect('/auth/login');
         }
     }
 

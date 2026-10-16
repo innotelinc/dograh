@@ -682,6 +682,7 @@ async def _run_pipeline_impl(
     run_configs = run_definition.workflow_configurations or {}
 
     # Extract configurations from the version's workflow_configurations
+    # (0 = no time limit: the call ends when the graph or the caller ends it).
     max_call_duration_seconds = DEFAULT_MAX_CALL_DURATION_SECONDS
     max_user_idle_timeout = DEFAULT_MAX_USER_IDLE_TIMEOUT_SECONDS
     keyterms = None  # Dictionary words for STT boosting
@@ -1039,7 +1040,13 @@ async def _run_pipeline_impl(
 
     # One call monitor owns user-idle, response and duration limits in both shapes.
     call_monitor_processor = engine.call_monitor
-    call_monitor_processor.max_call_duration_seconds = max_call_duration_seconds
+    # 0 is the documented "no limit" (see workflow_configurations and the read
+    # above), but the monitor compares elapsed time against the budget, so a
+    # literal 0 reads as already spent and ends the call on its first
+    # heartbeat. Translate it to the monitor's None before handing it over.
+    call_monitor_processor.max_call_duration_seconds = (
+        max_call_duration_seconds if max_call_duration_seconds > 0 else None
+    )
     call_monitor_processor.bind_user(
         user_context_aggregator, idle_timeout=max_user_idle_timeout
     )

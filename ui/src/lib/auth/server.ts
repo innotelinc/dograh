@@ -64,8 +64,10 @@ export async function getServerUser(): Promise<CurrentUser | LocalUser | null> {
         return null;
       }
     }
-  } else if (authProvider === 'local') {
-    // For OSS mode, get user from cookies (created by middleware)
+  } else if (authProvider === 'local' || authProvider === 'oidc') {
+    // For OSS mode and OIDC, get user from cookies (created by middleware).
+    // `oidc` shares the OSS session mechanism: an Authentik sign-in ends in the
+    // same `dograh_auth_token` cookie, so the lookup is identical.
     const user = await getOSSUser();
     return user;
   }
@@ -141,8 +143,11 @@ export async function getServerAccessToken(): Promise<string | null> {
       const auth = await user.getAuthJson();
       return auth?.accessToken ?? null;
     }
-  } else if (authProvider === 'local') {
-    // Get token from cookies (created by middleware)
+  } else if (authProvider === 'local' || authProvider === 'oidc') {
+    // Get token from cookies (created by middleware). `oidc` must be handled
+    // here too: it shares the session mechanism with `local`, and omitting it
+    // made every authenticated SSR page render "Authentication required"
+    // because the token looked missing on the server.
     return await getOSSToken();
   }
 

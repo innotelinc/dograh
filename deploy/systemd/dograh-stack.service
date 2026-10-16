@@ -1,0 +1,33 @@
+[Unit]
+Description=Dograh voice AI stack (docker compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+# One-shot: `up -d` returns after containers are started, RemainAfterExit
+# keeps the unit "active" so ExecStop runs on shutdown/reboot.
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/usr/src/vai
+
+# Wait for the docker daemon socket before composing (docker.service being
+# "active" does not guarantee the socket answers yet).
+ExecStartPre=/bin/sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+
+# The remote profile is what serves the public site: nginx, coturn, and
+# dograh-init (which renders nginx/coturn config into named volumes). A bare
+# `docker compose up` omits profile-gated services — that is why the stack
+# came back incomplete after the last reboot.
+# For a private-IP install that needs the Cloudflare tunnel, add:
+#   --profile tunnel
+ExecStart=/usr/bin/docker compose --profile remote up -d
+ExecStop=/usr/bin/docker compose --profile remote stop
+
+# Retry if docker was mid-restart at boot.
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

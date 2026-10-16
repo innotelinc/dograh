@@ -20,7 +20,9 @@ export default function SignInClient() {
   const router = useRouter();
 
   useEffect(() => {
-    if (provider === 'local') {
+    // `oidc` has no Stack sign-in component either: its login form lives at
+    // /auth/login, so send it there instead of spinning forever.
+    if (provider === 'local' || provider === 'oidc') {
       router.replace('/auth/login');
     }
   }, [provider, router]);
