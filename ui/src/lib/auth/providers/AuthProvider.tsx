@@ -99,10 +99,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // For local/OSS provider
+  // For local/OSS and OIDC providers. Both keep the session in the OSS cookies
+  // (the backend mints the same JWT either way), so they share one wrapper and
+  // only differ in the name they report.
   return (
     <Suspense fallback={LoadingFallback}>
-      <LocalProviderWrapper>
+      <LocalProviderWrapper providerName={config.provider}>
         {children}
       </LocalProviderWrapper>
     </Suspense>

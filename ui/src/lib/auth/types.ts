@@ -8,9 +8,11 @@ export interface BaseUser {
   image?: string;
 }
 
-// Local/OSS user type
+// Session-cookie user type. Covers both `local` (password) and `oidc`
+// (Cerulean/Authentik) because the backend mints the same JWT for either, so the
+// session is stored and read identically — only the sign-in screen differs.
 export interface LocalUser extends BaseUser {
-  provider: 'local';
+  provider: 'local' | 'oidc';
   organizationId?: string;
   displayName?: string;
   provider_id?: string;
@@ -30,7 +32,7 @@ export interface TeamPermission {
   id: string;
 }
 
-export type AuthProvider = 'stack' | 'local';
+export type AuthProvider = 'stack' | 'local' | 'oidc';
 
 export interface AuthConfig {
   provider: AuthProvider;

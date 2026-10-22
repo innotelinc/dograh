@@ -11,8 +11,12 @@ RUN apk add --no-cache python3 make g++ libc6-compat
 # Copy package files
 COPY ui/package*.json ./
 
-# Clean install with proper handling of native modules
-RUN --mount=type=cache,target=/root/.npm npm ci
+# Clean install with proper handling of native modules.
+# Heap is settable so this image can be built on a memory-constrained box:
+#   docker compose ... build --build-arg NODE_BUILD_HEAP_MB=2048 dograh-ui
+ARG NODE_BUILD_HEAP_MB=4096
+RUN --mount=type=cache,target=/root/.npm \
+    NODE_OPTIONS="--max-old-space-size=${NODE_BUILD_HEAP_MB}" npm ci
 
 # Stage 2: Builder
 FROM node:22-alpine AS builder
@@ -35,6 +39,12 @@ COPY ui/postcss.config.mjs ./
 COPY ui/public ./public
 COPY ui/src ./src
 
+# webpack's persistent cache is held in memory for the whole build and is pure
+# overhead here — the layer that writes it is discarded with the image. Set
+# here rather than in next.config.ts, which local builds share; see that file
+# for the measured reason (this is what makes the build fit a 4 GiB host).
+ENV NEXT_BUILD_FS_CACHE="0"
+
 # Set build-time environment variables (needed for Next.js build)
 ENV NEXT_PUBLIC_NODE_ENV="oss"
 ENV NEXT_TELEMETRY_DISABLED="1"
@@ -42,9 +52,18 @@ ENV NEXT_PUBLIC_CHATWOOT_URL="https://chat.dograh.com"
 ENV NEXT_PUBLIC_CHATWOOT_TOKEN="3fkFx2mCEjNHjM9gaNc4A82X"
 ENV BACKEND_URL="http://api:8000"
 
-# Build the application with standalone mode
-# Increase Node.js heap size to prevent out-of-memory errors during build
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+# Build the application with standalone mode.
+# The heap is an ARG (see the deps stage) so a build on a small host can cap it
+# instead of being OOM-killed: Next's webpack pass and its type-check child both
+# live under this number.
+ARG NODE_BUILD_HEAP_MB=4096
+ENV NODE_OPTIONS="--max-old-space-size=${NODE_BUILD_HEAP_MB}"
+# Type-check first, on its own line, then build with Next's own check disabled
+# (NEXT_SKIP_TYPECHECK). Same verification, but the two memory-heavy phases no
+# longer overlap — running them together is what got this build OOM-killed on a
+# 16 GB host. A type error still fails the image build here.
+ENV NEXT_SKIP_TYPECHECK="1"
+RUN npx tsc --noEmit
 RUN npm run build && \
     rm -rf /tmp/* /root/.npm /root/.next/cache
 

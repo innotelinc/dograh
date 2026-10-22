@@ -135,6 +135,85 @@ class UserClient(BaseDBClient):
             await session.execute(stmt)
             await session.commit()
 
+    async def claim_user_email(
+        self, user_id: int, provider_id: str, email: str
+    ) -> tuple[int | None, str | None]:
+        """Give `user_id` the address `email`, or explain why it cannot have it.
+
+        `update_user_email` is a bare UPDATE, so it raises on the
+        `ix_users_email_lower` unique index whenever another row already holds
+        the address, and the OIDC callback turns any exception during
+        provisioning into a generic "failed" redirect — so the person cannot
+        sign in and nothing anywhere says why. Reaching that state needs no
+        mistake: the provider can present an email whose row predates the
+        subject now claiming it, because an account deleted and recreated at
+        the provider gets a **new** subject, and a password account that later
+        moves to SSO carries no subject at all.
+
+        Returns `(adopted_user_id, None)` when the address belongs to a row with
+        no provider_id: that row is the same person, so the new subject is
+        written onto it and the empty row just created for that subject is
+        removed — which keeps the account's id and everything hanging off it.
+        Returns `(None, "email_in_use")` when it is bound to a **different**
+        subject, because re-pointing that row would hand the account to whoever
+        controls the address at the provider. Returns `(user_id, None)` on the
+        ordinary path.
+        """
+        from sqlalchemy import delete, update
+        from sqlalchemy.exc import IntegrityError
+
+        email = email.lower()
+        async with self.async_session() as session:
+            stmt = update(UserModel).where(UserModel.id == user_id).values(email=email)
+            try:
+                await session.execute(stmt)
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                result = await session.execute(
+                    select(UserModel).where(func.lower(UserModel.email) == email)
+                )
+                holder = result.scalars().first()
+                if holder is None or holder.id == user_id:
+                    # Either not the email index at all, or our own row —
+                    # nothing here can explain it, so let the caller see it.
+                    raise
+                if holder.provider_id:
+                    return None, "email_in_use"
+                # Adopt the subject-less row. Delete the row created for the new
+                # subject *first*: provider_id is unique, so re-keying the
+                # holder while both rows exist would collide on that index
+                # instead of the one we are resolving.
+                await session.execute(delete(UserModel).where(UserModel.id == user_id))
+                await session.execute(
+                    update(UserModel)
+                    .where(UserModel.id == holder.id)
+                    .values(provider_id=provider_id, email=email)
+                )
+                await session.commit()
+                return holder.id, None
+            return user_id, None
+
+    async def set_user_superuser(self, user_id: int, is_superuser: bool) -> None:
+        """Grant or revoke superuser rights.
+
+        Needed by the OIDC sign-in path, which derives rights from the identity
+        provider's admin list on every login. `get_or_create_user_by_provider_id`
+        can only ever create a non-superuser, so without this an SSO admin would
+        have to be promoted by hand in the database and would silently lose the
+        flag the first time the provider's list was corrected.
+        """
+        async with self.async_session() as session:
+            from sqlalchemy import update
+
+            stmt = (
+                update(UserModel)
+                .where(UserModel.id == user_id)
+                .values(is_superuser=is_superuser)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
     async def get_user_by_email(self, email: str) -> UserModel | None:
         """Fetch a user by their email address (case-insensitive).
 

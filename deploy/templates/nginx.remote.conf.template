@@ -1,36 +1,20 @@
 __DOGRAH_UPSTREAM_BLOCK__
 
+# Re-resolve upstream hostnames via Docker's embedded DNS. Without this,
+# `server api:8000` / `server ui:3010` are resolved once at process start and
+# cached for the process lifetime, so after `docker compose up -d` recreates a
+# container on a new bridge IP the proxy keeps hammering the dead IP
+# ("502 no live upstreams" / "connect() failed (113: Host is unreachable)").
+resolver 127.0.0.11 valid=10s;
+
 server {
     listen 80;
     server_name __DOGRAH_PUBLIC_HOST__;
 
-    # Serve Let's Encrypt HTTP-01 challenges out of the certs webroot that
-    # certbot --webroot writes into (./certs is bind-mounted here read-only).
-    # Only this path is exposed; local.crt/local.key are never served.
-    location ^~ /.well-known/acme-challenge/ {
-        root /etc/nginx/certs;
-        default_type "text/plain";
-        try_files $uri =404;
-    }
-
-    # Redirect everything else to HTTPS. This must live in a location block,
-    # not a server-level `return`, or it would fire before location matching
-    # and hijack the ACME challenge above.
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    server_name __DOGRAH_PUBLIC_HOST__;
-
-    ssl_certificate     /etc/nginx/certs/local.crt;
-    ssl_certificate_key /etc/nginx/certs/local.key;
-
-    # Basic TLS settings
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
+    # NPM (Nginx Proxy Manager, proxy.innotel.us) terminates TLS on the public
+    # side and forwards plain HTTP here on port 80. No ACME webroot, TLS
+    # redirect, or 443 block is needed — the app always sees
+    # X-Forwarded-Proto https below.
 
     # Backend API and WebSockets - bypass the UI, go straight to the
     # api workers via the least_conn upstream defined above.
@@ -59,7 +43,11 @@ server {
     }
 
     location / {
-        proxy_pass         http://ui:3010;
+        # Variable host: name is resolved per-request through the `resolver`
+        # above instead of once at process start, so a ui container recreate
+        # (new bridge IP) cannot leave this proxy pointing at a stale address.
+        set $ui_upstream http://ui:3010;
+        proxy_pass         $ui_upstream;
         proxy_http_version 1.1;
 
         # Important for WebSockets / hot reload etc.

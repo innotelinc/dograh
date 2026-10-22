@@ -1,0 +1,120 @@
+{
+  "data": {
+    "title": "Interview Pipeline Latency",
+    "description": "Per-call STT -> LLM -> TTS latency and TTFB for the dograh interview agent (service.name = dograh-pipeline).",
+    "tags": ["interview", "latency", "ttfb", "pipecat"],
+    "variables": {},
+    "layout": [
+      { "i": "panel-1", "w": 12, "h": 8, "x": 0, "y": 0, "panelType": "table" },
+      { "i": "panel-2", "w": 12, "h": 8, "x": 0, "y": 8, "panelType": "graph" },
+      { "i": "panel-3", "w": 6, "h": 8, "x": 0, "y": 16, "panelType": "graph" },
+      { "i": "panel-4", "w": 6, "h": 8, "x": 6, "y": 16, "panelType": "graph" },
+      { "i": "panel-5", "w": 6, "h": 8, "x": 0, "y": 24, "panelType": "graph" },
+      { "i": "panel-6", "w": 6, "h": 8, "x": 6, "y": 24, "panelType": "graph" }
+    ],
+    "panelMap": {
+      "panel-1": {
+        "id": "panel-1",
+        "title": "Pipeline latency per call",
+        "description": "Worst single stage latency per call (trace). Total = LLM + TTS + STT.",
+        "panelType": "table",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT traceID AS trace_id, toDateTime(timestamp) AS call_time, round(maxIf(durationNano / 1e9, name = 'llm'), 3) AS llm_s, round(maxIf(durationNano / 1e9, name = 'tts'), 3) AS tts_s, round(maxIf(durationNano / 1e9, name = 'stt'), 3) AS stt_s, round(maxIf(durationNano / 1e9, name = 'llm') + maxIf(durationNano / 1e9, name = 'tts') + maxIf(durationNano / 1e9, name = 'stt'), 3) AS pipeline_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND timestamp >= now() - INTERVAL 24 HOUR GROUP BY traceID, call_time ORDER BY call_time DESC LIMIT 200",
+            "legend": "",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      },
+      "panel-2": {
+        "id": "panel-2",
+        "title": "Pipeline latency p50 / p95 (per call)",
+        "description": "Percentiles of per-call pipeline latency (LLM+TTS+STT) over time.",
+        "panelType": "graph",
+        "graphType": "time_series",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT toStartOfMinute(call_time) AS t, quantile(0.5)(pipeline_s) AS p50_s, quantile(0.95)(pipeline_s) AS p95_s FROM ( SELECT traceID, toDateTime(timestamp) AS call_time, maxIf(durationNano / 1e9, name = 'llm') + maxIf(durationNano / 1e9, name = 'tts') + maxIf(durationNano / 1e9, name = 'stt') AS pipeline_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND timestamp >= now() - INTERVAL 1 HOUR GROUP BY traceID, call_time ) GROUP BY t ORDER BY t",
+            "legend": "{{ t }}",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      },
+      "panel-3": {
+        "id": "panel-3",
+        "title": "LLM TTFB (time to first token)",
+        "description": "metrics.ttfb on llm spans, in seconds.",
+        "panelType": "graph",
+        "graphType": "time_series",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT toStartOfMinute(timestamp) AS t, quantile(0.5)(attributesNumber['metrics.ttfb']) AS p50_s, quantile(0.95)(attributesNumber['metrics.ttfb']) AS p95_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND name = 'llm' AND has(attributesNumber, 'metrics.ttfb') AND timestamp >= now() - INTERVAL 1 HOUR GROUP BY t ORDER BY t",
+            "legend": "{{ t }}",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      },
+      "panel-4": {
+        "id": "panel-4",
+        "title": "TTS TTFB (time to first byte)",
+        "description": "metrics.ttfb on tts spans, in seconds.",
+        "panelType": "graph",
+        "graphType": "time_series",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT toStartOfMinute(timestamp) AS t, quantile(0.5)(attributesNumber['metrics.ttfb']) AS p50_s, quantile(0.95)(attributesNumber['metrics.ttfb']) AS p95_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND name = 'tts' AND has(attributesNumber, 'metrics.ttfb') AND timestamp >= now() - INTERVAL 1 HOUR GROUP BY t ORDER BY t",
+            "legend": "{{ t }}",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      },
+      "panel-5": {
+        "id": "panel-5",
+        "title": "STT TTFB (utterance processing)",
+        "description": "metrics.ttfb on stt spans, in seconds.",
+        "panelType": "graph",
+        "graphType": "time_series",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT toStartOfMinute(timestamp) AS t, quantile(0.5)(attributesNumber['metrics.ttfb']) AS p50_s, quantile(0.95)(attributesNumber['metrics.ttfb']) AS p95_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND name = 'stt' AND has(attributesNumber, 'metrics.ttfb') AND timestamp >= now() - INTERVAL 1 HOUR GROUP BY t ORDER BY t",
+            "legend": "{{ t }}",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      },
+      "panel-6": {
+        "id": "panel-6",
+        "title": "Stage duration breakdown",
+        "description": "Avg and p95 duration per stage over the last 6 hours.",
+        "panelType": "graph",
+        "graphType": "bar",
+        "query": {
+          "query": "clickhouse_sql",
+          "clickhouse_sql": {
+            "query": "SELECT name AS stage, count() AS calls, round(avg(durationNano / 1e9), 3) AS avg_s, round(quantile(0.95)(durationNano / 1e9), 3) AS p95_s FROM signoz_traces.signoz_index_v2 WHERE serviceName = 'dograh-pipeline' AND name IN ('llm', 'tts', 'stt') AND timestamp >= now() - INTERVAL 6 HOUR GROUP BY stage ORDER BY avg_s DESC",
+            "legend": "{{ stage }}",
+            "stepInterval": 60
+          }
+        },
+        "timePreferance": "GLOBAL_TIME",
+        "yAxisUnit": "s"
+      }
+    }
+  },
+  "version": "v3"
+}
