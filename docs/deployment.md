@@ -39,8 +39,13 @@ nothing was built between 1.45.0 and 1.52.1.
 * backs up `.env` and dumps the database to `/root/dograh-db-<stamp>.sql`,
 * rewrites `DOGRAH_API_IMAGE` / `DOGRAH_UI_IMAGE` in `.env`,
 * restarts only `dograh-api` and `dograh-ui` (`up -d --no-deps`),
-* polls `/api/v1/health` for the new version for 90s; on timeout it restores the `.env`
-  backup, restarts, and exits non-zero so the deploy job fails loudly.
+* polls `/api/v1/health` for the new version for 90s;
+* on timeout, re-reads `alembic_version` and branches:
+    * **revision unchanged** — restores the `.env` backup, restarts, exits non-zero so the
+      deploy job fails loudly;
+    * **revision moved** — refuses the rollback and leaves the new pin in place, because the
+      previous images carry an older alembic head and would only replace one non-starting
+      stack with another. It prints the dump path and the restore commands instead.
 
 `--no-deps` and the named services matter: the same project carries the switch, the gateway,
 Asterisk, the fax and the console, and none of those may restart for a dograh release.
@@ -77,15 +82,35 @@ Across one, restore the dump as well:
     docker exec -i christ-dograh-db psql -U postgres -d postgres < /root/dograh-db-<stamp>.sql
     # then restore the .env backup and `up -d`
 
-The hook's health-gated restore covers only the pin: if a release migrates and then fails its
-health check, the hook puts the previous image back and that image may not start either. When
-the failure follows a migration, treat it as a database restore, not a version edit.
+The hook used to cover only the pin, which was worse than useless after a migration: it put
+back an image that could not start. It now compares `alembic_version` before the release and
+again when health fails, and refuses the automatic restore when the revision moved, leaving the
+new pin in place with the dump path and the restore commands. When the failure follows a
+migration, treat it as a database restore, not a version edit.
+
+## Rehearsing a rollback before you need it
+
+`/usr/local/sbin/dograh-rehearse-rollback <tag>` (kept in `innotelinc/jesus`,
+`christ/deploy/dograh-rehearse-rollback`) answers the one question a rollback plan depends on:
+can that image start on the schema production is on right now? It copies the live database into
+a throwaway stack on its own network — `dograh-rehearse-<pid>-{pg,redis,minio,api}` — starts
+the candidate against the copy with every endpoint and credential swapped for the scratch one,
+waits for `/api/v1/health`, then removes everything. Live containers are never touched.
+
+    ssh root@45.77.221.158
+    /usr/local/sbin/dograh-rehearse-rollback 1.52.1     # same migration set: expect 0
+    /usr/local/sbin/dograh-rehearse-rollback 1.51.0     # older than the schema: expect 1
+
+Exit codes follow the estate convention: `0` the candidate serves on this schema, so a pin-only
+rollback is safe; `1` it cannot start, so the rollback must restore the dump too; `2` the
+rehearsal could not run (or was inconclusive) — never reported as a pass.
 
 ## Versions
 
 Releases come from release-please on `main`. `1.52.0` was upstream `1.51.0` plus the Capstone
-patches; `1.52.1` followed a documentation change. Both have published images, and
-production pins one explicit version — never `:latest`.
+patches; `1.52.1` followed a documentation change; `1.52.2` merged the release-please PR that
+the automated pipeline then shipped end to end. All three have published images, and production
+pins one explicit version — never `:latest`.
 
 ## Why the Vercel workflow is gone
 
