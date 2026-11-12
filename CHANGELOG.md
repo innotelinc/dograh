@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.53.1](https://github.com/innotelinc/dograh/compare/dograh-v1.53.0...dograh-v1.53.1) (2026-11-12)
+
+
+### Documentation
+
+* make the rehearsal example migration-proof ([3997c76](https://github.com/innotelinc/dograh/commit/3997c761ded70003c1ba988df5040f9053959f01))
+* stop the rehearsal examples from rotting at every migration ([6a0d794](https://github.com/innotelinc/dograh/commit/6a0d79478b138f48033cc2a4196e26003a69f600))
+
 ## [1.53.0](https://github.com/innotelinc/dograh/compare/dograh-v1.52.2...dograh-v1.53.0) (2026-11-12)
 
 
