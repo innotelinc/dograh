@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.2](https://github.com/innotelinc/dograh/compare/dograh-v1.52.1...dograh-v1.52.2) (2026-11-12)
+
+
+### Documentation
+
+* the release pipeline now deploys itself to christ ([a6072d9](https://github.com/innotelinc/dograh/commit/a6072d9127c3ce0518e9de670519e2378b9fadd1))
+
 ## [1.52.1](https://github.com/innotelinc/dograh/compare/dograh-v1.52.0...dograh-v1.52.1) (2026-11-12)
 
 
