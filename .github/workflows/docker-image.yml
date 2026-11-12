@@ -1,8 +1,31 @@
 name: Build and Push Docker Images
 
+# Images are what production runs: christ pulls them by tag, so a release
+# without a pushed image is a release that cannot deploy. Everything lands in
+# GHCR and is authenticated with the job token, because this repository holds no
+# registry credentials (and needs none).
+#
+# Three entry points:
+#   release published - a human published a release
+#   workflow_call     - release-automation.yml, which is how a real release gets
+#                       here: a release created with GITHUB_TOKEN cannot trigger
+#                       the `release` event, so the build has to be chained
+#   workflow_dispatch - a manual test build
+
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Version to publish, e.g. 1.52.1."
+        required: true
+        type: string
+      push_latest:
+        description: "Also move :latest."
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       image_tag:
@@ -20,11 +43,11 @@ permissions:
   packages: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  REGISTRY_GHCR: ghcr.io
+  REGISTRY: ghcr.io
 
 jobs:
   prepare:
@@ -36,22 +59,29 @@ jobs:
     steps:
       - name: Compute tags
         id: tags
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          CALL_VERSION: ${{ inputs.image_tag }}
+          CALL_LATEST: ${{ inputs.push_latest }}
         run: |
           SHORT_SHA="${GITHUB_SHA::8}"
-
-          if [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-            VERSION="${VERSION#dograh-}"
-            VERSION="${VERSION#v}"
-            PUSH_LATEST="true"
-          else
-            VERSION="${{ inputs.image_tag }}"
-            if [ -z "$VERSION" ]; then
-              VERSION="test-${SHORT_SHA}"
-            fi
-            PUSH_LATEST="${{ inputs.push_latest }}"
-          fi
-
+          case "$EVENT" in
+            release)
+              VERSION="${RELEASE_TAG#dograh-}"
+              VERSION="${VERSION#v}"
+              PUSH_LATEST=true
+              ;;
+            workflow_call)
+              VERSION="$CALL_VERSION"
+              PUSH_LATEST="$CALL_LATEST"
+              ;;
+            *)
+              VERSION="$CALL_VERSION"
+              [ -n "$VERSION" ] || VERSION="test-${SHORT_SHA}"
+              PUSH_LATEST="$CALL_LATEST"
+              ;;
+          esac
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "push_latest=${PUSH_LATEST}" >> "$GITHUB_OUTPUT"
@@ -96,18 +126,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to DockerHub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
-          registry: ${{ env.REGISTRY_GHCR }}
-          username: ${{ secrets.GHCR_USERNAME }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push by digest
         id: build
@@ -116,7 +140,7 @@ jobs:
           context: ${{ matrix.service.context }}
           file: ${{ matrix.service.dockerfile }}
           platforms: ${{ matrix.platform.name }}
-          outputs: 'type=image,"name=${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service.name }},${{ env.REGISTRY_GHCR }}/${{ secrets.GHCR_USERNAME }}/${{ matrix.service.name }}",push-by-digest=true,name-canonical=true,push=true'
+          outputs: 'type=image,"name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.service.name }}",push-by-digest=true,name-canonical=true,push=true'
           cache-from: type=gha,scope=${{ matrix.service.name }}-${{ matrix.platform.short }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}-${{ matrix.platform.short }}
 
@@ -155,65 +179,44 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to DockerHub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
-          registry: ${{ env.REGISTRY_GHCR }}
-          username: ${{ secrets.GHCR_USERNAME }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest lists
         env:
-          DH_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}
-          GH_NAMESPACE: ${{ env.REGISTRY_GHCR }}/${{ secrets.GHCR_USERNAME }}
+          NAMESPACE: ${{ env.REGISTRY }}/${{ github.repository_owner }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
           PUSH_LATEST: ${{ needs.prepare.outputs.push_latest }}
         run: |
+          set -euo pipefail
+
           inspect_digests() {
             service="$1"
-            digest_dir="/tmp/digests/$service"
-            dh_image="$DH_NAMESPACE/$service"
-            gh_image="$GH_NAMESPACE/$service"
-
-            for digest_file in "$digest_dir"/*; do
-              digest="$(cat "$digest_file")"
-              docker buildx imagetools inspect "$dh_image@sha256:$digest" >/dev/null
-              docker buildx imagetools inspect "$gh_image@sha256:$digest" >/dev/null
+            for digest_file in "/tmp/digests/$service"/*; do
+              docker buildx imagetools inspect "$NAMESPACE/$service@sha256:$(cat "$digest_file")" >/dev/null
             done
           }
 
           create_manifests() {
             service="$1"
-            digest_dir="/tmp/digests/$service"
-            dh_image="$DH_NAMESPACE/$service"
-            gh_image="$GH_NAMESPACE/$service"
-
-            dh_refs=$(printf "${dh_image}@sha256:%s " $(cat "$digest_dir"/*))
-            gh_refs=$(printf "${gh_image}@sha256:%s " $(cat "$digest_dir"/*))
-
-            dh_tags=(-t "$dh_image:$VERSION" -t "$dh_image:$SHORT_SHA")
-            gh_tags=(-t "$gh_image:$VERSION" -t "$gh_image:$SHORT_SHA")
-
+            refs=$(printf "$NAMESPACE/$service@sha256:%s " $(cat "/tmp/digests/$service"/*))
+            tags=(-t "$NAMESPACE/$service:$VERSION" -t "$NAMESPACE/$service:$SHORT_SHA")
             if [ "$PUSH_LATEST" = "true" ]; then
-              dh_tags+=(-t "$dh_image:latest")
-              gh_tags+=(-t "$gh_image:latest")
+              tags+=(-t "$NAMESPACE/$service:latest")
             fi
-
-            docker buildx imagetools create "${dh_tags[@]}" $dh_refs
-            docker buildx imagetools create "${gh_tags[@]}" $gh_refs
+            docker buildx imagetools create "${tags[@]}" $refs
           }
 
           inspect_digests dograh-api
           inspect_digests dograh-ui
           create_manifests dograh-api
           create_manifests dograh-ui
+          echo "published $NAMESPACE/dograh-{api,ui}:$VERSION (multi-arch)"
 
   notify:
     needs:
@@ -230,7 +233,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "✅ Docker images built for ${{ needs.prepare.outputs.version }} on ${{ github.ref_name }} by ${{ github.actor }}"
+              "text": "✅ Images published for ${{ needs.prepare.outputs.version }} by ${{ github.actor }}"
             }
 
       - name: Slack failure
@@ -239,5 +242,5 @@ jobs:
         with:
           payload: |
             {
-              "text": "❌ Docker build failed for ${{ needs.prepare.outputs.version }} on ${{ github.ref_name }} by ${{ github.actor }} - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+              "text": "❌ Image build failed for ${{ needs.prepare.outputs.version }} - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
             }
