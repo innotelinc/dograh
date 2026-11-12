@@ -98,8 +98,11 @@ the candidate against the copy with every endpoint and credential swapped for th
 waits for `/api/v1/health`, then removes everything. Live containers are never touched.
 
     ssh root@45.77.221.158
-    /usr/local/sbin/dograh-rehearse-rollback 1.52.1     # same migration set: expect 0
-    /usr/local/sbin/dograh-rehearse-rollback 1.51.0     # older than the schema: expect 1
+    /usr/local/sbin/dograh-rehearse-rollback <the-version-you-want-to-return-to>
+
+Which side of the last migration a tag sits on changes with every release, so run the
+command instead of reasoning from version numbers; its result line names the revision it
+actually tested against.
 
 Exit codes follow the estate convention: `0` the candidate serves on this schema, so a pin-only
 rollback is safe; `1` it cannot start, so the rollback must restore the dump too; `2` the
@@ -107,10 +110,11 @@ rehearsal could not run (or was inconclusive) — never reported as a pass.
 
 ## Versions
 
-Releases come from release-please on `main`. `1.52.0` was upstream `1.51.0` plus the Capstone
-patches; `1.52.1` followed a documentation change; `1.52.2` merged the release-please PR that
-the automated pipeline then shipped end to end. All three have published images, and production
-pins one explicit version — never `:latest`.
+Releases come from release-please on `main`. The fork starts from upstream `1.51.0` plus the
+Capstone patches, and every merge that produces a release is built and deployed by the pipeline
+above — no manual step and no registry credential on christ. Production pins one explicit
+version, never `:latest`, and `/usr/local/sbin/dograh-rehearse-rollback` is the quickest way to
+learn whether an older pin can still start.
 
 ## Why the Vercel workflow is gone
 
