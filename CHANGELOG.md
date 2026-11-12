@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.1](https://github.com/innotelinc/dograh/compare/dograh-v1.52.0...dograh-v1.52.1) (2026-11-12)
+
+
+### Documentation
+
+* record how dograh production is actually deployed, retire the Vercel workflow ([c8cdd5a](https://github.com/innotelinc/dograh/commit/c8cdd5a6ae565b7627a7efa793fcc219961dfbde))
+
 ## [1.52.0](https://github.com/innotelinc/dograh/compare/dograh-v1.51.0...dograh-v1.52.0) (2026-11-10)
 
 
