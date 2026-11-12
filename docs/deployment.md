@@ -36,6 +36,8 @@ nothing was built between 1.45.0 and 1.52.1.
 
 * validates the version string and refuses anything else,
 * `docker pull`s both tags **first**, so a missing or wrong tag changes nothing,
+* rehearses the candidate against a throwaway copy of the live database and refuses to promote
+  it if it cannot serve — before the backup, the dump or any container is touched,
 * backs up `.env` and dumps the database to `/root/dograh-db-<stamp>.sql`,
 * rewrites `DOGRAH_API_IMAGE` / `DOGRAH_UI_IMAGE` in `.env`,
 * restarts only `dograh-api` and `dograh-ui` (`up -d --no-deps`),
@@ -107,6 +109,23 @@ actually tested against.
 Exit codes follow the estate convention: `0` the candidate serves on this schema, so a pin-only
 rollback is safe; `1` it cannot start, so the rollback must restore the dump too; `2` the
 rehearsal could not run (or was inconclusive) — never reported as a pass.
+
+## Every release is rehearsed before it is promoted
+
+`dograh-deploy` runs that rehearsal itself, on the candidate, before it pins anything. A release
+that builds but cannot start on production's schema stops in the deploy job:
+
+    rehearsing 1.52.2 against the live schema before promoting it
+    [rehearse] RESULT: 1.52.2 cannot start on revision f3a9c21b7e40
+    refusing promotion: 1.52.2 cannot start on the schema production is on
+
+The running stack, `.env` and the database are untouched, and the job fails, so the release is
+visibly unshipped rather than quietly half-applied. Both `1` and `2` refuse: an unreachable or
+inconclusive bench is not permission to skip the check. Measured on christ — the refusal took
+21s and left production serving; a passing candidate promoted in 66s.
+
+Deploying by hand with the commands above skips both this gate and the migration guard. Prefer
+the hook when it is available: `SSH_ORIGINAL_COMMAND=<version> /usr/local/sbin/dograh-deploy`.
 
 ## Versions
 
