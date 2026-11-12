@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.53.2](https://github.com/innotelinc/dograh/compare/dograh-v1.53.1...dograh-v1.53.2) (2026-11-12)
+
+
+### Documentation
+
+* every release is rehearsed before it is promoted ([a0a7a5c](https://github.com/innotelinc/dograh/commit/a0a7a5c6caa336da7dd29c4ac70b4295d31730aa))
+* the pre-promotion rehearsal gate ([5c12f5c](https://github.com/innotelinc/dograh/commit/5c12f5ce7fd53765f53b6dbc8cf1742ba0371469))
+
 ## [1.53.1](https://github.com/innotelinc/dograh/compare/dograh-v1.53.0...dograh-v1.53.1) (2026-11-12)
 
 
