@@ -12,11 +12,75 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           # Config files location
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Use PAT to trigger deployment workflow
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Prefer the PAT so the release PR triggers further workflows; fall
+          # back to the job token when the optional PAT secret is absent,
+          # otherwise the step fails outright with "Input required".
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  # A release published with GITHUB_TOKEN does not start workflows, so the
+  # image build is chained here instead of relying on docker-image.yml's
+  # `release: published` trigger. Without this, a release shipped no image and
+  # nothing could be deployed.
+  images:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/docker-image.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_tag: ${{ needs.release-please.outputs.version }}
+      push_latest: true
+
+  # Production is the christ compose stack behind voice.innotel.us, not Vercel.
+  # The key is a force-commanded hook: it can only run /usr/local/sbin/dograh-deploy,
+  # which pulls the released tags, pins them in .env, restarts the two dograh
+  # services and rolls back if the api never reports the new version.
+  deploy-production:
+    needs:
+      - release-please
+      - images
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://voice.innotel.us/
+    concurrency:
+      group: dograh-production
+      cancel-in-progress: false
+    steps:
+      - name: Install the deploy key
+        env:
+          KEY: ${{ secrets.CHRIST_DEPLOY_KEY }}
+          HOST: ${{ vars.CHRIST_HOST }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEY" ]; then
+            echo "CHRIST_DEPLOY_KEY is not set on the production environment; nothing was deployed." >&2
+            exit 1
+          fi
+          HOST="${HOST:-45.77.221.158}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "CHRIST_HOST=$HOST" >> "$GITHUB_ENV"
+
+      - name: Roll out on christ
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "deploying $VERSION to christ"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes \
+            "root@${CHRIST_HOST}" "$VERSION"
